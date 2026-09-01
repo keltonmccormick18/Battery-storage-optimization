@@ -1,3 +1,6 @@
+import numpy as np
+from scipy.stats import norm
+
 def build_transition_matrix(data, theta, mu, sigma, X_grid, dt = 1):
 
     eta = 0.85 #round-trip efficiency
