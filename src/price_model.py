@@ -1,3 +1,9 @@
+import numpy as np
+import pandas as pd
+import statsmodels.api as sm
+from scipy.optimize import minimize
+from scipy.stats import norm
+
 def build_fourier_features(data, columns, n_harmonics=4):
     X = pd.DataFrame(index=data.index)
     X["const"] = 1.0
