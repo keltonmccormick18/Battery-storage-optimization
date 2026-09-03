@@ -24,3 +24,5 @@ If $u < 0$ and $H < 0$ (??); $u^* = \alpha$;
 Otherwise, 0.
 
 And the model assumes no market impact from our actions, which is reasonable in our personal situation but may be susceptible to scaling.
+
+Details:
