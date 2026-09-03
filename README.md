@@ -11,7 +11,7 @@ Terminal cost $z(X_T) = avg(P) \cdot S_T$
 
 $\mathbb{U} = [\alpha,\beta]$
 
-Gives us the HJB equation: $0 = \frac{\partial V}{\partial t} + \theta (\mu-X) \frac{\partial V} {\partial X} + \frac{1}{2} \sigma^2 \frac {\partial ^2 V}{\partial X^2} + \sup_{u\in[\alpha,\beta]}H(t,X,S,u)$
+Gives us the HJB equation: $$0 = \frac{\partial V}{\partial t} + \theta (\mu-X) \frac{\partial V} {\partial X} + \frac{1}{2} \sigma^2 \frac {\partial ^2 V}{\partial X^2} + \sup_{u\in[\alpha,\beta]}H(t,X,S,u)$$
 
 where the Hamiltonian $H$ is $$
 H = w + \frac{\partial V}{\partial S}(-u^+ + \eta u^-)
