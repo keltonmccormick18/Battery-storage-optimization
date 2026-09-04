@@ -105,3 +105,59 @@ def walk_forward_backtest(data):
     print(f"% positive weeks:    {100 * np.mean(np.array(revenues) > 0):.0f}%")
     print(f"Unique revenues: {len(set([round(r['revenue']) for r in results]))}")
     return results
+
+def perfect_foresight(prices, soc_grid, params):
+    T = len(prices)
+    N_s = len(soc_grid)
+    ds = soc_grid[1] - soc_grid[0]
+    u_max = params["u_max"]
+    eta = params["eta"]
+    S_max = params["S_max"]
+    q = params["q"]
+    dt = params["dt"]
+    
+    V = q * soc_grid
+    policy = np.zeros((T, N_s))
+    
+    for t in range(T - 1, -1, -1):
+        V_new = np.full(N_s, -np.inf)
+        for j in range(N_s):
+            best_val = -np.inf
+            best_u = 0
+            for u in [u_max, 0, -u_max]:
+                if u > 0:
+                    S_next = soc_grid[j] - u * dt
+                elif u < 0:
+                    S_next = soc_grid[j] + eta * abs(u) * dt
+                else:
+                    S_next = soc_grid[j]
+                if S_next < 0 or S_next > S_max:
+                    continue
+                revenue = u * prices[t] * dt
+                j_frac = (S_next - soc_grid[0]) / ds
+                j_lo = int(np.floor(j_frac))
+                j_lo = min(j_lo, N_s - 2)
+                j_hi = j_lo + 1
+                w = j_frac - j_lo
+                future = (1 - w) * V[j_lo] + w * V[j_hi]
+                total = revenue + future
+                if total > best_val:
+                    best_val = total
+                    best_u = u
+            V_new[j] = best_val
+            policy[t, j] = best_u
+        V = V_new
+    
+    # Simulate
+    soc = params["S_0"]
+    rev = 0
+    for t in range(T):
+        j_idx = np.argmin(np.abs(soc_grid - soc))
+        u = policy[t, j_idx]
+        rev += u * prices[t] * dt
+        if u > 0:
+            soc -= u * dt
+        elif u < 0:
+            soc += eta * abs(u) * dt
+        soc = np.clip(soc, 0, S_max)
+    return rev
