@@ -104,3 +104,4 @@ def walk_forward_backtest(data):
     print(f"Worst week:          ${np.min(revenues):,.0f}")
     print(f"% positive weeks:    {100 * np.mean(np.array(revenues) > 0):.0f}%")
     print(f"Unique revenues: {len(set([round(r['revenue']) for r in results]))}")
+    return results
