@@ -26,5 +26,6 @@ Otherwise, 0.
 And the model assumes no market impact from our actions, which is reasonable in our personal situation but may be susceptible to scaling.
 
 Details:
-fourier coefficients
-backtesting rigor
+fourier coefficients,
+backtesting rigor, next directions (jumps? more data?)
+
