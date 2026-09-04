@@ -14,7 +14,7 @@ markets (CISO and NYISO).
 | Value capture (mean)  | 67%     | 87%     |
 | Eval weeks            | 114     | 333     |
 
-![Cumulative P&L](images/cumulative_pnl.png)
+![Cumulative P&L](cumulative_pnl.png)
 
 ## Approach
 
