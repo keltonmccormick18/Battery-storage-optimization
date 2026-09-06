@@ -36,6 +36,14 @@ def simulate(policy, f, X_actual, X_grid, soc_grid, params, T_eval=None):
     return revenue, S_trajectory
 
 def walk_forward_backtest(data):
+
+    if "hour_of_day" not in data.columns:
+        data = data.copy()
+        data["hour"] = pd.to_datetime(data["hour"])
+        data["hour_of_day"] = data["hour"].dt.hour
+        data["dow"] = data["hour"].dt.dayofweek
+        data["month"] = data["hour"].dt.month
+    
     train_window = 24 * 365
     eval_window = 24  * 7
     buffer = 24 * 7
@@ -67,10 +75,13 @@ def walk_forward_backtest(data):
         # Remove weekly-level drift to match eval horizon volatility
         detrended = np.zeros_like(val_resid)
         for i in range(0, len(val_resid), 168):
-            block = val_resid[i:i + 168]
-            detrended[i:i + 168] = block - block.mean()
+            end = min(i + 168, len(val_resid))
+            block = val_resid[i:end]
+            detrended[i:end] = block - block.mean()
         
         theta, mu, sigma = estimate_ou_params(pd.Series(detrended))
+
+        theta = max(theta, 0.01)
     
         trans = build_transition_matrix(data, theta, mu, sigma, X_grid) 
         
