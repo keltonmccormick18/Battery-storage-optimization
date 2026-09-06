@@ -61,12 +61,16 @@ def walk_forward_backtest(data):
         # Pseudo-OOS residuals on second half
         validation = data.iloc[split:train_end].copy()
         val_features = build_fourier_features(validation, feature_cols)
+        
         val_resid = validation["price_usd_mwh"].values - seasonal_model_inner.predict(val_features).values
         
-        # Estimate OU on pseudo-OOS residuals
-        val_resid = val_resid - val_resid.mean()  # remove bias before OU estimation
+        # Remove weekly-level drift to match eval horizon volatility
+        detrended = np.zeros_like(val_resid)
+        for i in range(0, len(val_resid), 168):
+            block = val_resid[i:i + 168]
+            detrended[i:i + 168] = block - block.mean()
         
-        theta, mu, sigma = estimate_ou_params(pd.Series(val_resid))
+        theta, mu, sigma = estimate_ou_params(pd.Series(detrended))
     
         trans = build_transition_matrix(data, theta, mu, sigma, X_grid) 
         
