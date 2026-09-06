@@ -13,7 +13,7 @@ def build_transition_matrix(data, theta, mu, sigma, X_grid, dt = 1):
 
     # grid sizes:
     N_x = 80
-    N_s = 41
+    N_s = 81
 
     X = np.linspace(-100, 200, N_x)
     dx = X[1]-X[0]
