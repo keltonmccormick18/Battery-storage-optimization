@@ -42,7 +42,7 @@ def walk_forward_backtest(data):
     step = 24 * 7
     
     X_grid = np.linspace(-100,200,80)
-    soc_grid = np.linspace(0, 100, 41)
+    soc_grid = np.linspace(0, 100, 81)
     
     params = {"u_max":25, "eta":0.85, "S_max":100, "S_0": 0, "dt":1}
     
@@ -68,7 +68,7 @@ def walk_forward_backtest(data):
         
         theta, mu, sigma = estimate_ou_params(pd.Series(val_resid))
     
-        trans = build_transition_matrix(data, theta, mu, sigma, X_grid)  # ADD THIS
+        trans = build_transition_matrix(data, theta, mu, sigma, X_grid) 
         
         # Refit seasonal on full training window for eval
         full_train = data.iloc[start:train_end].copy()
