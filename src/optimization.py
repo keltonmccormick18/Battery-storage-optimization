@@ -1,44 +1,22 @@
 import numpy as np
 from scipy.stats import norm
 
-def build_transition_matrix(data, theta, mu, sigma, X_grid, dt = 1):
-
-    eta = 0.85 #round-trip efficiency
-    q =  data["price_usd_mwh"].mean()    # q is terminal value = long-term avg of price
-
-    #storage parameters
-    S_max = 100
-    S_0 = 0
-    u_max  = 25 #(= beta = -alpha)
-
-    # grid sizes:
-    N_x = 80
-    N_s = 81
-
-    X = np.linspace(-100, 200, N_x)
-    dx = X[1]-X[0]
-
-    soc_grid = np.linspace(0, S_max, N_s)
-    ds = soc_grid[1] - soc_grid[0]
-
-    T_extended = 24*14
-    T = 24 * 7
-
-    #precompute OU transition matrix...
-    #P(X_k at t+1 | X_t at t) for all i, k.
+def build_transition_matrix(theta, mu, sigma, X_grid, dt=1):
+    N_x = len(X_grid)
+    dx = X_grid[1] - X_grid[0]
+    
     trans = np.zeros((N_x, N_x))
-
     b = np.exp(-theta * dt)
-    ou_var = (sigma**2 / (2*theta)) * (1-b**2)
+    ou_var = (sigma**2 / (2 * theta)) * (1 - b**2)
     ou_std = np.sqrt(ou_var)
-
+    
     for i in range(N_x):
-        mean_next = mu * (1-b) + b * X[i]
-        probs = norm.pdf(X,mean_next, ou_std) * dx
-        probs /= probs.sum() #normalization
-        trans[i,:] = probs
-
-    return trans  
+        mean_next = mu * (1 - b) + b * X_grid[i]
+        probs = norm.pdf(X_grid, mean_next, ou_std) * dx
+        probs /= probs.sum()
+        trans[i, :] = probs
+    
+    return trans
 
 
 def get_optimal_policy(trans, f, X_grid, soc_grid, params):
