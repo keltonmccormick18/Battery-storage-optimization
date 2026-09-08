@@ -58,61 +58,61 @@ def walk_forward_backtest(data):
     prices_all = data["price_usd_mwh"].values
     hours_all = data["hour"].values
     
-for start in range(0, len(data) - train_window - eval_window - buffer, step):
-    train_end = start + train_window
-    split = start + int(train_window * 0.75)
-    
-    # Fit seasonal on first 75% for inner CV
-    seasonal_first = data.iloc[start:split].copy()
-    seasonal_model_inner, feature_cols_inner = fit_seasonal_fourier(seasonal_first)
-    
-    # Pseudo-OOS residuals on last 25%
-    validation = data.iloc[split:train_end].copy()
-    val_features = build_fourier_features(validation, feature_cols_inner)
-    val_resid = validation["price_usd_mwh"].values - seasonal_model_inner.predict(val_features).values
-    val_resid = val_resid - val_resid.mean()
-    
-    # Estimate OU on pseudo-OOS residuals
-    theta, mu, sigma = estimate_ou_params(pd.Series(val_resid))
-    theta = max(theta, 0.01)
-    
-    # Refit seasonal on full training window
-    full_train = data.iloc[start:train_end].copy()
-    seasonal_model, feature_cols = fit_seasonal_fourier(full_train)
-    
-    # Compute mu from last week's residual against full-window model
-    lookback = data.iloc[train_end - eval_window:train_end].copy()
-    lookback_features = build_fourier_features(lookback, feature_cols)
-    L_prev = (lookback["price_usd_mwh"].values - seasonal_model.predict(lookback_features).values).mean()
-    
-    BETA = 0.6
-    mu_eff = BETA * L_prev
-    
-    # Build transition matrix with corrected mu
-    trans = build_transition_matrix(theta, mu_eff, sigma, X_grid)
-    
-    # Eval predictions
-    eval_data = data.iloc[train_end:train_end + eval_window + buffer].copy()
-    eval_features = build_fourier_features(eval_data, feature_cols)
-    f_eval = seasonal_model.predict(eval_features).values
-    X_eval_resid = eval_data["price_usd_mwh"].values - f_eval
-    
-    params["q"] = full_train["price_usd_mwh"].mean()
-    
-    # Solve and simulate
-    policy = get_optimal_policy(trans, f_eval, X_grid, soc_grid, params)
-    rev, traj = simulate(policy, f_eval, X_eval_resid, X_grid, soc_grid, params, T_eval=eval_window)
-    
-    results.append({
-        "eval_start": train_end,
-        "revenue": rev,
-        "theta": theta,
-        "sigma": sigma,
-        "mu_eff": mu_eff
-    })
-    
-    print(f"Week{len(results):3d} | rev = ${rev:>10,.0f} | theta = {theta:.4f} | sigma={sigma:.2f} | mu={mu_eff:.2f}")
-    
+    for start in range(0, len(data) - train_window - eval_window - buffer, step):
+        train_end = start + train_window
+        split = start + int(train_window * 0.75)
+        
+        # Fit seasonal on first 75% for inner CV
+        seasonal_first = data.iloc[start:split].copy()
+        seasonal_model_inner, feature_cols_inner = fit_seasonal_fourier(seasonal_first)
+        
+        # Pseudo-OOS residuals on last 25%
+        validation = data.iloc[split:train_end].copy()
+        val_features = build_fourier_features(validation, feature_cols_inner)
+        val_resid = validation["price_usd_mwh"].values - seasonal_model_inner.predict(val_features).values
+        val_resid = val_resid - val_resid.mean()
+        
+        # Estimate OU on pseudo-OOS residuals
+        theta, mu, sigma = estimate_ou_params(pd.Series(val_resid))
+        theta = max(theta, 0.01)
+        
+        # Refit seasonal on full training window
+        full_train = data.iloc[start:train_end].copy()
+        seasonal_model, feature_cols = fit_seasonal_fourier(full_train)
+        
+        # Compute mu from last week's residual against full-window model
+        lookback = data.iloc[train_end - eval_window:train_end].copy()
+        lookback_features = build_fourier_features(lookback, feature_cols)
+        L_prev = (lookback["price_usd_mwh"].values - seasonal_model.predict(lookback_features).values).mean()
+        
+        BETA = 0.6
+        mu_eff = BETA * L_prev
+        
+        # Build transition matrix with corrected mu
+        trans = build_transition_matrix(theta, mu_eff, sigma, X_grid)
+        
+        # Eval predictions
+        eval_data = data.iloc[train_end:train_end + eval_window + buffer].copy()
+        eval_features = build_fourier_features(eval_data, feature_cols)
+        f_eval = seasonal_model.predict(eval_features).values
+        X_eval_resid = eval_data["price_usd_mwh"].values - f_eval
+        
+        params["q"] = full_train["price_usd_mwh"].mean()
+        
+        # Solve and simulate
+        policy = get_optimal_policy(trans, f_eval, X_grid, soc_grid, params)
+        rev, traj = simulate(policy, f_eval, X_eval_resid, X_grid, soc_grid, params, T_eval=eval_window)
+        
+        results.append({
+            "eval_start": train_end,
+            "revenue": rev,
+            "theta": theta,
+            "sigma": sigma,
+            "mu_eff": mu_eff
+        })
+        
+        print(f"Week{len(results):3d} | rev = ${rev:>10,.0f} | theta = {theta:.4f} | sigma={sigma:.2f} | mu={mu_eff:.2f}")
+        
     revenues = [r["revenue"] for r in results]
     print(f"Mean weekly revenue: ${np.mean(revenues):,.0f}")
     print(f"Std weekly revenue:  ${np.std(revenues):,.0f}")
