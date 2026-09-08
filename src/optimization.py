@@ -31,52 +31,52 @@ def get_optimal_policy(trans, f, X_grid, soc_grid, params):
     q = params["q"]
     dt = params["dt"]
     
-    actions = [u_max, 0, -u_max]
-    
-    V = np.zeros((N_x,N_s))
-    V[:,:] = q * soc_grid[np.newaxis, :]
+    V = np.zeros((N_x, N_s))
+    V[:, :] = q * soc_grid[np.newaxis, :]
     policy = np.zeros((T, N_x, N_s))
+    
+    # Precompute SOC transitions and interpolation weights
+    S_next_discharge = soc_grid - u_max * dt
+    S_next_charge = soc_grid + eta * u_max * dt
+    
+    # Discharge interpolation
+    j_frac_d = (S_next_discharge - soc_grid[0]) / ds
+    j_lo_d = np.clip(np.floor(j_frac_d).astype(int), 0, N_s - 2)
+    w_d = j_frac_d - j_lo_d
+    discharge_feasible = S_next_discharge >= 0
+    
+    # Charge interpolation
+    j_frac_c = (S_next_charge - soc_grid[0]) / ds
+    j_lo_c = np.clip(np.floor(j_frac_c).astype(int), 0, N_s - 2)
+    w_c = j_frac_c - j_lo_c
+    charge_feasible = S_next_charge <= S_max
     
     for t in range(T - 1, -1, -1):
         f_t = f[t]
-        EV = trans @ V
-        V_new = np.full((N_x, N_s), -np.inf)
+        EV = trans @ V  # (N_x, N_s)
         
-        for i in range(N_x):
-            full_price = f_t + X_grid[i]
-            
-            for j in range(N_s):
-                best_val = -np.inf
-                best_u = 0
-                
-                for u in actions:
-                    if u > 0:
-                        S_next = soc_grid[j] - u * dt
-                    elif u < 0:
-                        S_next = soc_grid[j] + eta * abs(u) * dt
-                    else:
-                        S_next = soc_grid[j]
-                    
-                    if S_next < 0 or S_next > S_max:
-                        continue
-                    
-                    revenue = u * full_price * dt
-                    
-                    j_frac = (S_next - soc_grid[0]) / ds
-                    j_lo = int(np.floor(j_frac))
-                    j_hi = min(j_lo + 1, N_s - 1)
-                    w = j_frac - j_lo
-                    future = (1 - w) * EV[i, j_lo] + w * EV[i, j_hi]
-                    
-                    total = revenue + future
-                    if total > best_val:
-                        best_val = total
-                        best_u = u
-                
-                V_new[i, j] = best_val
-                policy[t, i, j] = best_u
+        full_prices = f_t + X_grid  # (N_x,)
         
-        V = V_new
+        # Future value for discharge at each SOC
+        future_d = (1 - w_d) * EV[:, j_lo_d] + w_d * EV[:, j_lo_d + 1]  # (N_x, N_s)
+        rev_d = full_prices[:, np.newaxis] * u_max * dt
+        val_discharge = np.where(discharge_feasible, rev_d + future_d, -np.inf)
+        
+        # Future value for charge at each SOC
+        future_c = (1 - w_c) * EV[:, j_lo_c] + w_c * EV[:, j_lo_c + 1]  # (N_x, N_s)
+        rev_c = full_prices[:, np.newaxis] * (-u_max) * dt
+        val_charge = np.where(charge_feasible, rev_c + future_c, -np.inf)
+        
+        # Hold
+        val_hold = EV
+        
+        # Stack and pick best
+        all_vals = np.stack([val_discharge, val_hold, val_charge], axis=0)  # (3, N_x, N_s)
+        best_idx = np.argmax(all_vals, axis=0)  # (N_x, N_s)
+        
+        V = np.max(all_vals, axis=0)
+        actions = np.array([u_max, 0, -u_max])
+        policy[t] = actions[best_idx]
     
     return policy
 
@@ -85,6 +85,7 @@ def perfect_foresight(prices, soc_grid, params):
     T = len(prices)
     N_s = len(soc_grid)
     ds = soc_grid[1] - soc_grid[0]
+    
     u_max = params["u_max"]
     eta = params["eta"]
     S_max = params["S_max"]
@@ -94,34 +95,34 @@ def perfect_foresight(prices, soc_grid, params):
     V = q * soc_grid
     policy = np.zeros((T, N_s))
     
+    S_next_discharge = soc_grid - u_max * dt
+    S_next_charge = soc_grid + eta * u_max * dt
+    
+    j_lo_d = np.clip(np.floor((S_next_discharge - soc_grid[0]) / ds).astype(int), 0, N_s - 2)
+    w_d = (S_next_discharge - soc_grid[0]) / ds - j_lo_d
+    discharge_feasible = S_next_discharge >= 0
+    
+    j_lo_c = np.clip(np.floor((S_next_charge - soc_grid[0]) / ds).astype(int), 0, N_s - 2)
+    w_c = (S_next_charge - soc_grid[0]) / ds - j_lo_c
+    charge_feasible = S_next_charge <= S_max
+    
     for t in range(T - 1, -1, -1):
-        V_new = np.full(N_s, -np.inf)
-        for j in range(N_s):
-            best_val = -np.inf
-            best_u = 0
-            for u in [u_max, 0, -u_max]:
-                if u > 0:
-                    S_next = soc_grid[j] - u * dt
-                elif u < 0:
-                    S_next = soc_grid[j] + eta * abs(u) * dt
-                else:
-                    S_next = soc_grid[j]
-                if S_next < 0 or S_next > S_max:
-                    continue
-                revenue = u * prices[t] * dt
-                j_frac = (S_next - soc_grid[0]) / ds
-                j_lo = int(np.floor(j_frac))
-                j_lo = min(j_lo, N_s - 2)
-                j_hi = j_lo + 1
-                w = j_frac - j_lo
-                future = (1 - w) * V[j_lo] + w * V[j_hi]
-                total = revenue + future
-                if total > best_val:
-                    best_val = total
-                    best_u = u
-            V_new[j] = best_val
-            policy[t, j] = best_u
-        V = V_new
+        price = prices[t]
+        
+        future_d = (1 - w_d) * V[j_lo_d] + w_d * V[j_lo_d + 1]
+        val_discharge = np.where(discharge_feasible, price * u_max * dt + future_d, -np.inf)
+        
+        future_c = (1 - w_c) * V[j_lo_c] + w_c * V[j_lo_c + 1]
+        val_charge = np.where(charge_feasible, price * (-u_max) * dt + future_c, -np.inf)
+        
+        val_hold = V
+        
+        all_vals = np.stack([val_discharge, val_hold, val_charge], axis=0)
+        best_idx = np.argmax(all_vals, axis=0)
+        
+        V = np.max(all_vals, axis=0)
+        actions = np.array([u_max, 0, -u_max])
+        policy[t] = actions[best_idx]
     
     # Simulate
     soc = params["S_0"]
