@@ -71,15 +71,8 @@ def walk_forward_backtest(data):
         val_features = build_fourier_features(validation, feature_cols)
         
         val_resid = validation["price_usd_mwh"].values - seasonal_model_inner.predict(val_features).values
-        
-        # Remove weekly-level drift to match eval horizon volatility
-        detrended = np.zeros_like(val_resid)
-        for i in range(0, len(val_resid), 168):
-            end = min(i + 168, len(val_resid))
-            block = val_resid[i:end]
-            detrended[i:end] = block - block.mean()
-        
-        theta, mu, sigma = estimate_ou_params(pd.Series(detrended))
+        val_resid = val_resid - val_resid.mean()
+        theta, mu, sigma = estimate_ou_params(pd.Series(val_resid))
 
         theta = max(theta, 0.01)
     
