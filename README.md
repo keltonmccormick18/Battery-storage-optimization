@@ -10,7 +10,7 @@ markets (CISO and NYISO).
 |----------------------|---------|---------|
 | Mean weekly revenue   | $13,669 | $10,211  |
 | Trimmed Sharpe        | 1.72    | 1.49    |
-| Win rate              | 95%     | 97%     |
+| Win rate              | 96%     | 98%     |
 | Value capture (mean)  | 74%     | 86%     |
 | Value capture (ratio) | 82%     | 72%     |
 | Eval weeks            | 114     | 333     |
