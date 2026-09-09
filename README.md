@@ -8,10 +8,11 @@ markets (CISO and NYISO).
 
 | Metric               | CISO    | NYISO   |
 |----------------------|---------|---------|
-| Mean weekly revenue   | $13,014 | $9,907  |
-| Trimmed Sharpe        | 1.61    | 1.48    |
+| Mean weekly revenue   | $13,669 | $10,211  |
+| Trimmed Sharpe        | 1.72    | 1.49    |
 | Win rate              | 95%     | 97%     |
-| Value capture (mean)  | 67%     | 87%     |
+| Value capture (mean)  | 74%     | 86%     |
+| Value capture (ratio) | 82%     | 72%     |
 | Eval weeks            | 114     | 333     |
 
 ![Cumulative P&L](cumulative_pnl.png)
@@ -37,6 +38,13 @@ Parameters $(\theta, \mu, \sigma)$ are estimated via MLE on
 pseudo-out-of-sample residuals using an inner cross-validation
 split within the training window, which prevents the OU calibration
 from seeing artificially clean in-sample residuals.
+
+The long-run mean μ is set using a persistence forecast: the 
+average residual over the final week of the training window, 
+shrunk by a factor of 0.6 (estimated independently in both 
+markets). This captures the observation that weekly residual 
+levels are ~60% autocorrelated — the model reverts toward where 
+prices actually are, not toward a historical zero.
 
 ### Control Problem
 
@@ -64,7 +72,10 @@ to evaluating three cases rather than solving a continuous problem.
 Rather than finite-differencing the HJB (which has CFL stability
 constraints), the OU transition density is discretized into a
 probability matrix and the value function is computed via backward
-induction on a (price residual × SOC) grid. The expectation step
+induction on a (price residual × SOC) grid. Grid spacing is chosen 
+so that both charge (η·ū=21.25 MWh) and discharge (ū=25 MWh) 
+transitions land exactly on grid points, eliminating interpolation 
+error between the policy solver and simulator. The expectation step
 reduces to a single matrix multiply per time step.
 
 ### Validation
@@ -104,6 +115,13 @@ No future information leaks into any evaluation week.
 - No transaction costs (bid-ask spread, grid fees)
 - No battery degradation costs
 - No ramp rate constraints
+
+## Implementation Notes
+
+Backward induction is fully vectorized over the (price × SOC) 
+grid — each time step evaluates all three candidate actions as 
+array operations rather than element-wise loops, yielding ~50-100× 
+speedup over the naive implementation.
 
 ## Structure
 
