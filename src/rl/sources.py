@@ -1,14 +1,27 @@
 import numpy as np
 
 def sample_calib(rng):
-    """Draw one (theta, mu, sigma) from wide priors bracketing the observed
-    walk-forward calibration range. Deliberately not fitted to the results."""
-    half_life  = np.exp(rng.uniform(np.log(2.0), np.log(240.0)))   # hours
+    half_life  = np.exp(rng.uniform(np.log(2.0), np.log(80.0)))
     theta      = np.log(2) / half_life
-    sigma_stat = np.exp(rng.uniform(np.log(4.0), np.log(140.0)))   # $/MWh
+    sigma_stat = np.exp(rng.uniform(np.log(8.0), np.log(50.0)))
     sigma      = sigma_stat * np.sqrt(2 * theta)
     mu         = rng.uniform(-0.9, 0.9) * sigma_stat
     return theta, mu, sigma
+
+def sample_f(rng, T=336, q=42.0):
+    level = q * (1 + rng.normal(0, 0.31))         
+    amp   = np.exp(rng.uniform(np.log(10), np.log(30)))
+    t = np.arange(T)
+
+    f = level + amp * np.sin(2 * np.pi * t / 24 + rng.uniform(0, 2 * np.pi))
+
+    for k in (2, 3):
+        f += amp * rng.uniform(0.1, 0.5) / k * np.sin(
+            2 * np.pi * k * t / 24 + rng.uniform(0, 2 * np.pi)
+        )
+    
+    return f
+
 
 class OUSource:
     """Sample residual paths from calibrated OU process"""
@@ -86,19 +99,3 @@ class RandomizedOUSource:
             X[t] = mu * (1-b) + b * X[t-1] + rng.normal(0, noise_std)
         
         return X
-    
-def sample_f(rng, T = 336, q = 42.0):
-    """generates a randomized seasonal price curve
-    """
-    level = q * (1 + rng.uniform(-0.3, 0.3))
-    amp = np.exp(rng.uniform(np.log(3),np.log(60)))
-    t = np.arange(T)
-
-    f = level + amp * np.sin(2 * np.pi * t / 24 + rng.uniform(0, 2 * np.pi))
-
-    for k in (2, 3):
-        f += amp * rng.uniform(0.1, 0.5) / k * np.sin(
-            2 * np.pi * k * t / 24 + rng.uniform(0, 2 * np.pi)
-        )
-    
-    return f

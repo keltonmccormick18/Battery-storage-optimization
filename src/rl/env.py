@@ -10,8 +10,8 @@ from src.dynamics import battery_step
 #   mu/sigma_stat   ~ U(-0.9, 0.9)
 # Uniform on [a,b] -> mean (a+b)/2, std (b-a)/sqrt(12).
 # Update these if you change the bounds in sample_calib.
-_LOGTH_M, _LOGTH_S = -3.45, 1.38
-_LOGSS_M, _LOGSS_S =  3.16, 1.03
+_LOGTH_M, _LOGTH_S = -2.92, 1.07
+_LOGSS_M, _LOGSS_S =  3.00, 0.53
 _MUR_S = 0.52
 
 class BatteryEnv(gym.Env):
