@@ -47,7 +47,7 @@ class Gate2EvalCallback(BaseCallback):
         self.best_mean = -np.inf
     
     def _on_step(self):
-        if self.n_calls % self.eval_freq != 0:
+        if self.num_timesteps % self.eval_freq != 0:
             return True
         
         source = OUSource(theta=self.theta, mu=self.mu, sigma=self.sigma)
@@ -60,12 +60,14 @@ class Gate2EvalCallback(BaseCallback):
             done = False
             
             while not done:
-                action, _ = self.model.predict(obs, deterministic=True)
+                masks = np.array(env.action_masks())
+                action, _ = self.model.predict(obs, deterministic=True,
+                                            action_masks=masks)
                 obs, reward, done, truncated, info = env.step(int(action))
                 done = done or truncated
             
-            revenues.append(info["revenue"])
-            violations.append(info["mask_violations"])
+        revenues.append(info["revenue"])
+        violations.append(info["mask_violations"])
         
         mean_rev = np.mean(revenues)
         std_rev = np.std(revenues)
