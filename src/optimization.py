@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.stats import norm
 
+
 def build_transition_matrix(theta, mu, sigma, X_grid, dt=1):
     N_x = len(X_grid)
     dx = X_grid[1] - X_grid[0]

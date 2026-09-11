@@ -3,36 +3,31 @@ import pandas as pd
 import statsmodels.api as sm
 from src.price_model import fit_seasonal_fourier, build_fourier_features, fit_seasonal, estimate_ou_params
 from src.optimization import build_transition_matrix, get_optimal_policy
-
+from src.dynamics import battery_step
 
 def simulate(policy, f, X_actual, X_grid, soc_grid, params, T_eval=None):
     if T_eval is None:
         T_eval = len(f)
     
-    S_max = params["S_max"]
-    eta = params["eta"]
-    dt = params["dt"]
     S_0 = params["S_0"]
     
+    soc = S_0
     S_trajectory = np.zeros(T_eval + 1)
-    S_trajectory[0] = S_0
+    S_trajectory[0] = soc
     revenue = 0
     
     for t in range(T_eval):
         x_idx = np.argmin(np.abs(X_grid - X_actual[t]))
-        s_idx = np.argmin(np.abs(soc_grid - S_trajectory[t]))
+        s_idx = np.argmin(np.abs(soc_grid - soc))
         
         u = policy[t, x_idx, s_idx]
-        revenue += u * (f[t] + X_actual[t]) * dt
-        
-        if u > 0:
-            S_next = S_trajectory[t] - u * dt
-        elif u < 0:
-            S_next = S_trajectory[t] + eta * abs(u) * dt
-        else:
-            S_next = S_trajectory[t]
-        S_trajectory[t + 1] = np.clip(S_next, 0, S_max)
-    
+        full_price = f[t] + X_actual[t]
+
+        soc, rev = battery_step(soc, u , full_price, params)
+        revenue += rev
+
+        S_trajectory[t + 1] = soc
+
     return revenue, S_trajectory
 
 def walk_forward_backtest(data):
@@ -49,14 +44,11 @@ def walk_forward_backtest(data):
     buffer = 24 * 7
     step = 24 * 7
     
-    X_grid = np.linspace(-100,200,80)
     soc_grid = np.linspace(0, 100, 81)
     
     params = {"u_max":25, "eta":0.85, "S_max":100, "S_0": 0, "dt":1}
     
     results = []
-    prices_all = data["price_usd_mwh"].values
-    hours_all = data["hour"].values
     
     for start in range(0, len(data) - train_window - eval_window - buffer, step):
         train_end = start + train_window
@@ -75,6 +67,7 @@ def walk_forward_backtest(data):
         # Estimate OU on pseudo-OOS residuals
         theta, mu, sigma = estimate_ou_params(pd.Series(val_resid))
         theta = max(theta, 0.01)
+        sigma_stat = sigma / np.sqrt(2 * theta)
         
         # Refit seasonal on full training window
         full_train = data.iloc[start:train_end].copy()
@@ -86,7 +79,11 @@ def walk_forward_backtest(data):
         L_prev = (lookback["price_usd_mwh"].values - seasonal_model.predict(lookback_features).values).mean()
         
         BETA = 0.6
+        
+        L_prev = np.clip(L_prev, -1.5 * sigma_stat, 1.5 * sigma_stat)  
         mu_eff = BETA * L_prev
+
+        X_grid = np.linspace(mu_eff - 5 * sigma_stat, mu_eff + 5 * sigma_stat, 200)
         
         # Build transition matrix with corrected mu
         trans = build_transition_matrix(theta, mu_eff, sigma, X_grid)
@@ -108,7 +105,12 @@ def walk_forward_backtest(data):
             "revenue": rev,
             "theta": theta,
             "sigma": sigma,
-            "mu_eff": mu_eff
+            "mu_eff": mu_eff,
+            "sigma_stat": sigma_stat,
+            "X_grid": X_grid,
+            "policy": policy,        # remove post test
+            "f_eval": f_eval,        # ^
+            "X_eval_resid": X_eval_resid,  # ^
         })
         
         print(f"Week{len(results):3d} | rev = ${rev:>10,.0f} | theta = {theta:.4f} | sigma={sigma:.2f} | mu={mu_eff:.2f}")
@@ -171,11 +173,8 @@ def perfect_foresight(prices, soc_grid, params):
     for t in range(T):
         j_idx = np.argmin(np.abs(soc_grid - soc))
         u = policy[t, j_idx]
-        rev += u * prices[t] * dt
-        if u > 0:
-            soc -= u * dt
-        elif u < 0:
-            soc += eta * abs(u) * dt
-        soc = np.clip(soc, 0, S_max)
+        full_price = prices[t]
+        soc, r = battery_step(soc, u, full_price, params)
+        rev += r
     return rev
 
