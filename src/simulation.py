@@ -1,9 +1,7 @@
 import numpy as np
-import pandas as pd
-import statsmodels.api as sm
-from src.price_model import fit_seasonal_fourier, build_fourier_features, fit_seasonal, estimate_ou_params
 from src.optimization import build_transition_matrix, get_optimal_policy
 from src.dynamics import battery_step
+from src.windows import build_windows, SOC_GRID, BASE_PARAMS, EVAL_WINDOW
 
 def simulate(policy, f, X_actual, X_grid, soc_grid, params, T_eval=None):
     if T_eval is None:
@@ -30,98 +28,45 @@ def simulate(policy, f, X_actual, X_grid, soc_grid, params, T_eval=None):
 
     return revenue, S_trajectory
 
-def walk_forward_backtest(data):
+def solve_dp(w):
+    """Backward-induction policy for one window. ~44 MB: use it, don't store it."""
+    params = {**BASE_PARAMS, "q": w["q"]}
+    trans = build_transition_matrix(w["theta"], w["mu_eff"], w["sigma"], w["X_grid"])
+    return get_optimal_policy(trans, w["f_eval"], w["X_grid"], SOC_GRID, params)
 
-    if "hour_of_day" not in data.columns:
-        data = data.copy()
-        data["hour"] = pd.to_datetime(data["hour"])
-        data["hour_of_day"] = data["hour"].dt.hour
-        data["dow"] = data["hour"].dt.dayofweek
-        data["month"] = data["hour"].dt.month
-    
-    train_window = 24 * 365
-    eval_window = 24  * 7
-    buffer = 24 * 7
-    step = 24 * 7
-    
-    soc_grid = np.linspace(0, 100, 81)
-    
-    params = {"u_max":25, "eta":0.85, "S_max":100, "S_0": 0, "dt":1}
-    
+def walk_forward_backtest(data, windows=None, verbose=True):
+    if windows is None:
+        windows = build_windows(data)
+
     results = []
-    
-    for start in range(0, len(data) - train_window - eval_window - buffer, step):
-        train_end = start + train_window
-        split = start + int(train_window * 0.75)
-        
-        # Fit seasonal on first 75% for inner CV
-        seasonal_first = data.iloc[start:split].copy()
-        seasonal_model_inner, feature_cols_inner = fit_seasonal_fourier(seasonal_first)
-        
-        # Pseudo-OOS residuals on last 25%
-        validation = data.iloc[split:train_end].copy()
-        val_features = build_fourier_features(validation, feature_cols_inner)
-        val_resid = validation["price_usd_mwh"].values - seasonal_model_inner.predict(val_features).values
-        val_resid = val_resid - val_resid.mean()
-        
-        # Estimate OU on pseudo-OOS residuals
-        theta, mu, sigma = estimate_ou_params(pd.Series(val_resid))
-        theta = max(theta, 0.01)
-        sigma_stat = sigma / np.sqrt(2 * theta)
-        
-        # Refit seasonal on full training window
-        full_train = data.iloc[start:train_end].copy()
-        seasonal_model, feature_cols = fit_seasonal_fourier(full_train)
-        
-        # Compute mu from last week's residual against full-window model
-        lookback = data.iloc[train_end - eval_window:train_end].copy()
-        lookback_features = build_fourier_features(lookback, feature_cols)
-        L_prev = (lookback["price_usd_mwh"].values - seasonal_model.predict(lookback_features).values).mean()
-        
-        BETA = 0.6
-        
-        L_prev = np.clip(L_prev, -1.5 * sigma_stat, 1.5 * sigma_stat)  
-        mu_eff = BETA * L_prev
-
-        X_grid = np.linspace(mu_eff - 5 * sigma_stat, mu_eff + 5 * sigma_stat, 200)
-        
-        # Build transition matrix with corrected mu
-        trans = build_transition_matrix(theta, mu_eff, sigma, X_grid)
-        
-        # Eval predictions
-        eval_data = data.iloc[train_end:train_end + eval_window + buffer].copy()
-        eval_features = build_fourier_features(eval_data, feature_cols)
-        f_eval = seasonal_model.predict(eval_features).values
-        X_eval_resid = eval_data["price_usd_mwh"].values - f_eval
-        
-        params["q"] = full_train["price_usd_mwh"].mean()
-        
-        # Solve and simulate
-        policy = get_optimal_policy(trans, f_eval, X_grid, soc_grid, params)
-        rev, traj = simulate(policy, f_eval, X_eval_resid, X_grid, soc_grid, params, T_eval=eval_window)
-        
+    for w in windows:
+        params = {**BASE_PARAMS, "q": w["q"]}
+        policy = solve_dp(w)
+        rev, traj = simulate(policy, w["f_eval"], w["X_eval_resid"], w["X_grid"],
+                             SOC_GRID, params, T_eval=EVAL_WINDOW)
         results.append({
-            "eval_start": train_end,
+            "eval_start": w["eval_start"],
             "revenue": rev,
-            "theta": theta,
-            "sigma": sigma,
-            "mu_eff": mu_eff,
-            "sigma_stat": sigma_stat,
-            "X_grid": X_grid,
-            "policy": policy,        # remove post test
-            "f_eval": f_eval,        # ^
-            "X_eval_resid": X_eval_resid,  # ^
+            "theta": w["theta"],
+            "sigma": w["sigma"],
+            "mu_eff": w["mu_eff"],
+            "sigma_stat": w["sigma_stat"],
+            "X_grid": w["X_grid"],
+            "f_eval": w["f_eval"],
+            "X_eval_resid": w["X_eval_resid"],
         })
-        
-        print(f"Week{len(results):3d} | rev = ${rev:>10,.0f} | theta = {theta:.4f} | sigma={sigma:.2f} | mu={mu_eff:.2f}")
-        
-    revenues = [r["revenue"] for r in results]
-    print(f"Mean weekly revenue: ${np.mean(revenues):,.0f}")
-    print(f"Std weekly revenue:  ${np.std(revenues):,.0f}")
-    print(f"Sharpe (weekly):     {np.mean(revenues) / np.std(revenues):.2f}")
-    print(f"Worst week:          ${np.min(revenues):,.0f}")
-    print(f"% positive weeks:    {100 * np.mean(np.array(revenues) > 0):.0f}%")
-    print(f"Unique revenues: {len(set([round(r['revenue']) for r in results]))}")
+        if verbose:
+            print(f"Week{len(results):3d} | rev = ${rev:>10,.0f} | theta = {w['theta']:.4f} | "
+                  f"sigma={w['sigma']:.2f} | mu={w['mu_eff']:.2f}")
+
+    if verbose:
+        revenues = [r["revenue"] for r in results]
+        print(f"Mean weekly revenue: ${np.mean(revenues):,.0f}")
+        print(f"Std weekly revenue:  ${np.std(revenues):,.0f}")
+        print(f"Sharpe (weekly):     {np.mean(revenues) / np.std(revenues):.2f}")
+        print(f"Worst week:          ${np.min(revenues):,.0f}")
+        print(f"% positive weeks:    {100 * np.mean(np.array(revenues) > 0):.0f}%")
+        print(f"Unique revenues: {len(set([round(r['revenue']) for r in results]))}")
     return results
 
 def perfect_foresight(prices, soc_grid, params):
