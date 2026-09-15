@@ -89,6 +89,70 @@ def evaluate_dp(market, windows):
     return pd.DataFrame(rows), np.array(sim_revenues)
 
 
+def replay_batch(windows, predict_fn, record_actions=False):
+    """Replay one env per window in lockstep, calling predict_fn once per hour for all of them.
+
+    predict_fn(obs, masks, envs) -> actions, with obs (n, obs_dim) and masks (n, 3).
+    envs is passed so non-learned policies (DP, baselines) can read env state; any
+    predict_fn must use only information available at env.t (gates.check_no_lookahead).
+    """
+    envs = [replay_env(w) for w in windows]
+    T = envs[0].T
+    assert all(e.T == T for e in envs), "windows must share an episode length"
+    obs = np.stack([e.reset(seed=0)[0] for e in envs])
+    soc_end = np.full(len(envs), np.nan)
+    actions = np.zeros((T, len(envs)), dtype=np.int8) if record_actions else None
+    for t in range(T):
+        if t == EVAL_WINDOW:
+            soc_end = np.array([e.soc for e in envs], dtype=float)
+        masks = np.stack([np.asarray(e.action_masks(), dtype=bool) for e in envs])
+        a = np.asarray(predict_fn(obs, masks, envs)).reshape(-1).astype(int)
+        if record_actions:
+            actions[t] = a
+        obs = np.stack([e.step(int(ai))[0] for e, ai in zip(envs, a)])
+    return {
+        "revenue": np.array([e.total_revenue for e in envs], dtype=float),
+        "soc_end": soc_end,
+        "violations": np.array([e.n_mask_violations for e in envs]),
+        "actions": actions,
+    }
+
+
+def evaluate_agent(market, windows, predict_fn, method, record_actions=False):
+    """Score a policy on every window through the batched replay. Returns (table, actions or None)."""
+    out = replay_batch(windows, predict_fn, record_actions)
+    rows = []
+    for i, w in enumerate(windows):
+        pf_cash, pf_soc = pf_outcome(w)
+        rows.append(result_row(market, w, method, out["revenue"][i], out["soc_end"][i],
+                               pf_cash + w["q"] * pf_soc, out["violations"][i]))
+    return pd.DataFrame(rows), out["actions"]
+
+
+def sb3_predict_fn(model):
+    """Deterministic masked policy from a loaded MaskablePPO. SB3 is imported by the caller, not here."""
+    def predict(obs, masks, envs):
+        actions, _ = model.predict(obs, deterministic=True, action_masks=masks)
+        return actions
+    return predict
+
+
+def dp_predict_fn(windows):
+    """The DP policy behind the batched interface, for testing the harness itself.
+
+    Must be built from the same window list later passed to replay_batch. Solves one
+    policy per distinct week (~44 MB each), so keep the list short.
+    """
+    policies = {}
+    for w in windows:
+        if w["week_idx"] not in policies:
+            policies[w["week_idx"]] = solve_dp(w)
+
+    def predict(obs, masks, envs):
+        return np.array([dp_action(policies[w["week_idx"]], w, e) for w, e in zip(windows, envs)])
+    return predict
+
+
 def check_validity(table, tol=0.01):
     """Raise if any row breaks the validity rule: mask violations, or beating perfect foresight."""
     masked = table[table.mask_violations > 0]
