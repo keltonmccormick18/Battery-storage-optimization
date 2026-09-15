@@ -76,4 +76,21 @@ B3 = np.mean([score(f"/content/runs/B_s{s}_1", 3_000_000) for s in (0, 1)])
 ```
 
 ## Outcome
-_To be filled in a separate commit after all runs complete._
+Runs completed 2026-09-15. All valid: A 20 evals, B 30 evals, 0 mask violations.
+
+| | seed 0 | seed 1 | mean |
+|---|---|---|---|
+| A @ 2M | 94.63 | 94.92 | 94.78 |
+| B @ 2M | 94.25 | 93.70 | 93.98 |
+| B @ 3M | 95.34 | 94.16 | 94.75 |
+
+Per-seed B − A at 2M: −0.38, −1.22 (same sign; Rule 3 not triggered).
+
+- Rule 1: 93.98 ≥ 94.78 − 1.0 = 93.78 → **adopt B** (n_steps 512, batch_size 512).
+- Rule 2: 94.75 < 93.98 + 1.0 = 94.98 → **total_timesteps 2M**.
+
+**Interpretation.** B was selected by the pre-registered tolerance, not because it
+outperformed A: it scored 0.80 pp below A at 2M, lower on both seeds. With two
+seeds the configurations are not distinguishable. Extending B to 3M added 0.77 pp,
+below threshold, suggesting the remaining ~5% gap to DP reflects function
+approximation rather than training budget.
