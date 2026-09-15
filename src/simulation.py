@@ -69,7 +69,7 @@ def walk_forward_backtest(data, windows=None, verbose=True):
         print(f"Unique revenues: {len(set([round(r['revenue']) for r in results]))}")
     return results
 
-def perfect_foresight(prices, soc_grid, params):
+def perfect_foresight(prices, soc_grid, params, return_soc=False):
     T = len(prices)
     N_s = len(soc_grid)
     ds = soc_grid[1] - soc_grid[0]
@@ -121,5 +121,5 @@ def perfect_foresight(prices, soc_grid, params):
         full_price = prices[t]
         soc, r = battery_step(soc, u, full_price, params)
         rev += r
-    return rev
+    return (rev, soc) if return_soc else rev
 

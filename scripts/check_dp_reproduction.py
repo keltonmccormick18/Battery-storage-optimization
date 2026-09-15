@@ -1,4 +1,5 @@
-"""Gate: refactored windows + env replay reproduce the frozen DP backtest exactly.
+"""Gate: refactored windows + env replay reproduce the frozen DP backtest exactly,
+and scored results satisfy the validity rule in docs/experiments/scoring_rule.md.
 
 Run scripts/capture_dp_reference.py first.
 """
@@ -13,9 +14,10 @@ import numpy as np
 import pandas as pd
 
 from src.windows import get_windows
-from src.rl.evaluate import evaluate_dp, save_results
+from src.rl.evaluate import evaluate_dp, save_results, check_validity, summarize
 
-README = {
+# README figures under the old cash-only scoring, kept to confirm reproduction.
+README_CASH = {
     "CISO": {"mean": 13_717, "trimmed_sharpe": 1.75, "vc_mean": 0.75, "vc_ratio": 0.82},
     "NYIS": {"mean": 10_229, "trimmed_sharpe": 1.51, "vc_mean": 0.86, "vc_ratio": 0.72},
 }
@@ -38,21 +40,27 @@ def main():
         d_sim = np.abs(dp.revenue.values - sim).max()
         assert d_ref < 0.01, f"{market}: differs from frozen DP by up to ${d_ref:.4f}"
         assert d_sim < 0.01, f"{market}: env replay differs from simulate() by up to ${d_sim:.4f}"
-        assert dp.mask_violations.max() == 0, f"{market}: mask violations in DP replay"
+        check_validity(table)
 
-        rev = dp.revenue.values
+        rev, pf_cash = dp.revenue.values, pf.revenue.values
         trimmed = np.sort(rev)[5:-5]
-        got = {
+        cash = {
             "mean": rev.mean(),
             "trimmed_sharpe": trimmed.mean() / trimmed.std(),
-            "vc_mean": dp.value_capture.mean(),
-            "vc_ratio": rev.sum() / pf.revenue.sum(),
+            "vc_mean": np.mean([r / p if p > 0 else 0.0 for r, p in zip(rev, pf_cash)]),
+            "vc_ratio": rev.sum() / pf_cash.sum(),
         }
+
         path = save_results(table, market)
         print(f"{market}: PASS  {len(dp)} weeks | max |diff| vs frozen ${d_ref:.2e}, "
-              f"vs simulate ${d_sim:.2e} | wrote {path.name}")
-        for k, v in got.items():
-            print(f"    {k:15s} {v:10.4f}   README {README[market][k]}")
+              f"vs simulate ${d_sim:.2e} | no week beats perfect foresight | wrote {path.name}")
+        print("  cash-only scoring (reproduces README):")
+        for k, v in cash.items():
+            print(f"    {k:18s} {v:12.4f}   README {README_CASH[market][k]}")
+        print("  scoring rule (cash + q * SOC_168):")
+        for k, v in summarize(table, "dp").items():
+            print(f"    {k:18s} {v:12.4f}")
+        print(f"    {'pf_mean_score':18s} {pf.score.mean():12.4f}")
 
 
 if __name__ == "__main__":
