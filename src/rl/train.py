@@ -3,9 +3,10 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.wrappers import ActionMasker
 from src.rl.env import BatteryEnv
-from src.rl.sources import OUSource, RandomizedOUSource, sample_f
+from src.rl.sources import OUSource, RandomizedOUSource, sample_f, sample_calib
 from stable_baselines3.common.callbacks import BaseCallback
 from src.optimization import build_transition_matrix, get_optimal_policy
+import os
 
 
 def mask_fn(env):
@@ -35,83 +36,101 @@ class Gate2EvalCallback(BaseCallback):
     Gate 2 calibration. Logs mean revenue to TensorBoard.
     """
     
-    def __init__(self, f_eval, params, theta, mu, sigma, 
+    def __init__(self, f_eval, params, theta, mu, sigma,
                  n_eval_episodes=200, eval_freq=10_000, verbose=1):
         super().__init__(verbose)
-        self.f_eval = f_eval
-        self.params = params
-        self.theta = theta
-        self.mu = mu
-        self.sigma = sigma
-        self.n_eval_episodes = n_eval_episodes
-        self.eval_freq = eval_freq
+        self.f_eval, self.params = f_eval, params
+        self.theta, self.mu, self.sigma = theta, mu, sigma
+        self.n_eval_episodes, self.eval_freq = n_eval_episodes, eval_freq
         self.best_mean = -np.inf
-
-        sigma_stat = sigma / np.sqrt(2 * theta)
-        self.X_grid   = np.linspace(mu - 5*sigma_stat, mu + 5*sigma_stat, 200)
         self.soc_grid = np.linspace(0, 100, 81)
-        trans = build_transition_matrix(theta, mu, sigma, self.X_grid)
-        self.dp_policy = get_optimal_policy(trans, f_eval, self.X_grid, self.soc_grid, params)
 
-        src = OUSource(theta=theta, mu=mu, sigma=sigma)
-        self.dp_revs = np.array([
-            self._run_episode(BatteryEnv(src, f_eval, params, f_sampler=None), ep,
-                              policy=self.dp_policy)[0]
-            for ep in range(n_eval_episodes)
-        ])
+        # single window (Gate 2)
+        ss = sigma / np.sqrt(2 * theta)
+        Xg = np.linspace(mu - 5*ss, mu + 5*ss, 200)
+        pol = get_optimal_policy(build_transition_matrix(theta, mu, sigma, Xg),
+                                 f_eval, Xg, self.soc_grid, params)
+        src = OUSource(theta, mu, sigma)
+        seeds = list(range(n_eval_episodes))
+        self.sw_case = (src, f_eval, seeds,
+                        np.array([self._run_dp(src, f_eval, Xg, pol, s) for s in seeds]))
+        # multi-calibration, drawn from the training prior
+        rng = np.random.default_rng(999)
+        self.mc_cases = []
+        for c in range(20):
+            th, m, sg = sample_calib(rng)                
+            f = sample_f(rng, 336, params["q"])
+            ss = sg / np.sqrt(2 * th)
+            Xg = np.linspace(m - 5*ss, m + 5*ss, 200)
+            pol = get_optimal_policy(build_transition_matrix(th, m, sg, Xg),
+                                     f, Xg, self.soc_grid, params)
+            src = OUSource(th, m, sg)
+            seeds = [20_000 + 100*c + k for k in range(10)]   # distinct per case
+            dp = np.array([self._run_dp(src, f, Xg, pol, s) for s in seeds])
+            self.mc_cases.append((src, f, seeds, dp))
 
-    def _run_episode(self, env, seed, policy=None):
-        obs, info = env.reset(seed=seed)
-        done = False
-        while not done:
-            if policy is None:
-                masks = np.array(env.action_masks())
-                action, _ = self.model.predict(obs, deterministic=True, action_masks=masks)
-                a = int(action)
-            else:
-                x_idx = np.argmin(np.abs(self.X_grid - env.X[env.t]))
-                s_idx = np.argmin(np.abs(self.soc_grid - env.soc))
-                u = policy[env.t, x_idx, s_idx]
-                a = 0 if u > 0 else (2 if u < 0 else 1)
-            obs, reward, done, truncated, info = env.step(a)
-            done = done or truncated
-        return info["revenue"], info["mask_violations"]
+    def _run_dp(self, src, f, Xg, pol, seed):
+        env = BatteryEnv(src, f, self.params, f_sampler=None)
+        env.reset(seed=seed)
+        for _ in range(env.T):
+            x_idx = np.argmin(np.abs(Xg - env.X[env.t]))
+            s_idx = np.argmin(np.abs(self.soc_grid - env.soc))
+            u = pol[env.t, x_idx, s_idx]
+            env.step(0 if u > 0 else (2 if u < 0 else 1))
+        return env.total_revenue
     
+    def _agent_revs_batched(self, cases):
+        envs, seeds = [], []
+        for src, f, seed_list, _dp in cases:
+            for s in seed_list:
+                envs.append(BatteryEnv(src, f, self.params, f_sampler=None))
+                seeds.append(s)
+        obs = np.stack([e.reset(seed=s)[0] for e, s in zip(envs, seeds)])
+        for _ in range(envs[0].T):
+            masks = np.stack([e.action_masks() for e in envs])
+            actions, _ = self.model.predict(obs, deterministic=True, action_masks=masks)
+            obs = np.stack([e.step(int(a))[0] for e, a in zip(envs, actions)])
+        revs = np.array([e.total_revenue for e in envs]).reshape(len(cases), -1)
+        viol = sum(e.n_mask_violations for e in envs)
+        return revs, viol
+
     def _on_step(self):
         if self.n_calls % max(1, self.eval_freq // self.training_env.num_envs) != 0:
             return True
-        
-        source = OUSource(theta=self.theta, mu=self.mu, sigma=self.sigma)
-        revenues = []
-        violations = []
-        
-        for ep in range(self.n_eval_episodes):
-            env = BatteryEnv(source, self.f_eval, self.params, f_sampler=None)
-            r, v = self._run_episode(env, ep)
-            revenues.append(r); violations.append(v)
 
-        agent_revs = np.array(revenues)
-        mean_rev = np.mean(revenues)
-        std_rev = np.std(revenues)
-        mean_violations = np.mean(violations)
-        diff = agent_revs - self.dp_revs
-        pct  = 100 * agent_revs.mean() / self.dp_revs.mean()
-        
-        self.logger.record("eval/mean_revenue", mean_rev)
-        self.logger.record("eval/std_revenue", std_rev)
-        self.logger.record("eval/min_revenue", np.min(revenues))
-        self.logger.record("eval/mask_violations", mean_violations)
-        self.logger.record("eval/pct_of_dp", pct)
-        self.logger.record("eval/paired_diff_mean", diff.mean())
-        
-        if mean_rev > self.best_mean:
-            self.best_mean = mean_rev
-            self.model.save("best_model")
-        
+        sw_agent, sw_viol = self._agent_revs_batched([self.sw_case])
+        mc_agent, mc_viol = self._agent_revs_batched(self.mc_cases)
+
+        sw_agent = sw_agent.ravel()
+        sw_dp = self.sw_case[3]
+        mc_dp = np.stack([c[3] for c in self.mc_cases])               # (20, 10)
+
+        mc_pct = 100 * mc_agent.sum() / mc_dp.sum()                   # decision metric
+        mc_case_pct = 100 * mc_agent.mean(axis=1) / mc_dp.mean(axis=1)
+        sw_pct = 100 * sw_agent.mean() / sw_dp.mean()
+        diff = sw_agent - sw_dp
+        diff_se = diff.std(ddof=1) / np.sqrt(len(diff))
+        violations = sw_viol + mc_viol
+
+        self.logger.record("eval/mc_pct_of_dp", mc_pct)
+        self.logger.record("eval/mc_worst_case_pct", mc_case_pct.min())
+        self.logger.record("eval/sw_pct_of_dp", sw_pct)
+        self.logger.record("eval/sw_agent_mean", sw_agent.mean())
+        self.logger.record("eval/sw_paired_diff_mean", diff.mean())
+        self.logger.record("eval/sw_paired_diff_se", diff_se)
+        self.logger.record("eval/mask_violations", violations)
+
+        if self.logger.dir is not None:
+            self.model.save(os.path.join(self.logger.dir, f"ckpt_{self.num_timesteps}"))
+            if mc_pct > self.best_mean:                                # best by decision metric
+                self.best_mean = mc_pct
+                self.model.save(os.path.join(self.logger.dir, "best_mc"))
+
         if self.verbose:
             print(f"Step {self.num_timesteps:>9,d} | "
-                  f"Agent: ${mean_rev:>9,.0f} | DP: ${self.dp_revs.mean():>9,.0f} | "
-                  f"% of DP: {pct:5.1f}% | paired Δ: ${diff.mean():>+9,.0f} | "
-                  f"Viol: {mean_violations:.0f}")
-        
+                  f"MC: {mc_pct:5.1f}% (worst case {mc_case_pct.min():5.1f}%) | "
+                  f"SW: {sw_pct:5.1f}% | "
+                  f"paired Δ: ${diff.mean():>+8,.0f} ± {diff_se:,.0f} | "
+                  f"Viol: {violations}", flush=True)
+
         return True
