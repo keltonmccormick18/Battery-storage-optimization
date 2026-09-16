@@ -184,8 +184,11 @@ def save_results(table, market, results_dir=None):
     path = (results_dir or ROOT / "results") / f"historical_{market}.csv"
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
-        old = pd.read_csv(path)
-        table = pd.concat([old[~old["method"].isin(table["method"].unique())], table],
-                          ignore_index=True)
+        # round_trip: the default parser is not exact, so re-saving would otherwise
+        # shift every previously written value by ~1 ULP each time.
+        old = pd.read_csv(path, float_precision="round_trip")
+        old = old[~old["method"].isin(table["method"].unique())]
+        old = old.reindex(columns=table.columns)      # drop columns from older schemas
+        table = pd.concat([old, table], ignore_index=True)
     table.sort_values(["method", "week_idx"]).to_csv(path, index=False)
     return path

@@ -39,6 +39,7 @@ def git_state():
 
 def run(market, predict_fn, name, model_path=None, check_weeks=6, save_actions=False, results_dir=None):
     results_dir = Path(results_dir or ROOT / "results")
+    commit, dirty = git_state()   # before this run writes anything
     windows = get_windows(market)
 
     sample = [windows[i] for i in np.linspace(0, len(windows) - 1, check_weeks).round().astype(int)]
@@ -56,7 +57,6 @@ def run(market, predict_fn, name, model_path=None, check_weeks=6, save_actions=F
     if save_actions:
         np.savez_compressed(results_dir / f"actions_{market}_{name}.npz",
                             actions=actions, week_idx=table.week_idx.values)
-    commit, dirty = git_state()
     meta = {
         "market": market,
         "method": name,
