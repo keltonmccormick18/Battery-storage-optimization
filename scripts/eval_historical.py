@@ -24,6 +24,7 @@ from src.windows import get_windows
 from src.rl.evaluate import evaluate_agent, sb3_predict_fn, check_validity, save_results, summarize
 from src.rl.gates import check_determinism, check_no_lookahead
 from src.baselines import BASELINES
+from src.rl.priors import ENV_KWARGS
 
 
 def git_state():
@@ -40,20 +41,22 @@ def git_state():
         return "unknown", None
 
 
-def run(market, predict_fn, name, model_path=None, check_weeks=6, save_actions=False, results_dir=None):
+def run(market, predict_fn, name, model_path=None, check_weeks=6, save_actions=False, results_dir=None,
+        env_kwargs=None):
     results_dir = Path(results_dir or ROOT / "results")
     commit, dirty = git_state()   # before this run writes anything
     windows = get_windows(market)
 
     sample = [windows[i] for i in np.linspace(0, len(windows) - 1, check_weeks).round().astype(int)]
     same_policy = lambda ws: predict_fn          # an agent's policy doesn't depend on the week list
-    check_determinism(sample, same_policy)
-    changed = check_no_lookahead(sample, same_policy)
+    check_determinism(sample, same_policy, env_kwargs)
+    changed = check_no_lookahead(sample, same_policy, env_kwargs=env_kwargs)
     print(f"[{name}] {market}: deterministic and no lookahead on {check_weeks} sample weeks "
           f"(later actions responded to changed prices in {changed:.0%} of cases; "
           f"0% means the policy ignores prices)", flush=True)
 
-    table, actions = evaluate_agent(market, windows, predict_fn, name, record_actions=save_actions)
+    table, actions = evaluate_agent(market, windows, predict_fn, name, record_actions=save_actions,
+                                    env_kwargs=env_kwargs)
     check_validity(table)
 
     path = save_results(table, market, results_dir)
@@ -68,6 +71,7 @@ def run(market, predict_fn, name, model_path=None, check_weeks=6, save_actions=F
         "model_sha256": hashlib.sha256(Path(model_path).read_bytes()).hexdigest() if model_path else None,
         "git_commit": commit,
         "git_dirty": dirty,
+        "observe_q": bool((env_kwargs or {}).get("observe_q", False)),
         "evaluated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
     (results_dir / f"meta_{market}_{name}.json").write_text(json.dumps(meta, indent=2))
@@ -107,7 +111,7 @@ def main():
         predict_fn = sb3_predict_fn(MaskablePPO.load(a.model, device="cpu"))
 
     run(a.market, predict_fn, name, model_path=a.model, check_weeks=a.check_weeks,
-        save_actions=a.save_actions, results_dir=a.results_dir)
+        save_actions=a.save_actions, results_dir=a.results_dir, env_kwargs=ENV_KWARGS[a.market])
 
 
 if __name__ == "__main__":

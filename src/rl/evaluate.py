@@ -19,9 +19,11 @@ def window_params(w):
     return {**BASE_PARAMS, "q": w["q"]}
 
 
-def replay_env(w):
+def replay_env(w, env_kwargs=None):
+    """env_kwargs: market-specific BatteryEnv options (src/rl/priors.ENV_KWARGS). Only the
+    observation depends on them, so DP and baseline results are unaffected."""
     source = ReplaySource(w["X_eval_resid"], calib=(w["theta"], w["mu_eff"], w["sigma"]))
-    return BatteryEnv(source, w["f_eval"], window_params(w), f_sampler=None)
+    return BatteryEnv(source, w["f_eval"], window_params(w), f_sampler=None, **(env_kwargs or {}))
 
 
 def dp_action(policy, w, env):
@@ -89,14 +91,14 @@ def evaluate_dp(market, windows):
     return pd.DataFrame(rows), np.array(sim_revenues)
 
 
-def replay_batch(windows, predict_fn, record_actions=False):
+def replay_batch(windows, predict_fn, record_actions=False, env_kwargs=None):
     """Replay one env per window in lockstep, calling predict_fn once per hour for all of them.
 
     predict_fn(obs, masks, envs) -> actions, with obs (n, obs_dim) and masks (n, 3).
     envs is passed so non-learned policies (DP, baselines) can read env state; any
     predict_fn must use only information available at env.t (gates.check_no_lookahead).
     """
-    envs = [replay_env(w) for w in windows]
+    envs = [replay_env(w, env_kwargs) for w in windows]
     T = envs[0].T
     assert all(e.T == T for e in envs), "windows must share an episode length"
     obs = np.stack([e.reset(seed=0)[0] for e in envs])
@@ -118,9 +120,9 @@ def replay_batch(windows, predict_fn, record_actions=False):
     }
 
 
-def evaluate_agent(market, windows, predict_fn, method, record_actions=False):
+def evaluate_agent(market, windows, predict_fn, method, record_actions=False, env_kwargs=None):
     """Score a policy on every window through the batched replay. Returns (table, actions or None)."""
-    out = replay_batch(windows, predict_fn, record_actions)
+    out = replay_batch(windows, predict_fn, record_actions, env_kwargs)
     rows = []
     for i, w in enumerate(windows):
         pf_cash, pf_soc = pf_outcome(w)

@@ -14,15 +14,47 @@ _LOGTH_M, _LOGTH_S = -2.92, 1.07
 _LOGSS_M, _LOGSS_S =  3.00, 0.53
 _MUR_S = 0.52
 
+# The constants above as a normalization dict: the default, so CISO agents see exactly
+# the observations they were trained on. Other markets pass their own (src/rl/priors.py).
+CISO_NORM = {
+    "log_theta": (_LOGTH_M, _LOGTH_S),
+    "mu_ratio": (0.0, _MUR_S),
+    "log_sigma_stat": (_LOGSS_M, _LOGSS_S),
+}
+CALIB_FEATURES = ["log_theta", "mu_ratio", "log_sigma_stat"]
+
+
+def raw_calib_features(calib, q):
+    theta, mu, sigma = calib
+    sigma_stat = sigma / np.sqrt(2 * theta)
+    return {
+        "log_theta": np.log(theta),
+        "mu_ratio": mu / sigma_stat,
+        "log_sigma_stat": np.log(sigma_stat),
+        "log_q_over_sigma_stat": np.log(q / sigma_stat),
+    }
+
 class BatteryEnv(gym.Env):
     """
     battery storage dispatch environment.
 
     336-step episodes; reward scored on first 168 -- for the buffer to prevent terminal condition from distorting behaviour.
     3 discrete actions: discharge (0), hold (1), charge (2).
+
+    Optional, all off by default (the frozen CISO configuration):
+      episode_sampler(rng, T) -> {"q", "f", "X", "calib"}: draw a whole scenario each reset,
+          replacing source and f_sampler (NYISO training).
+      norm: standardization constants for the calibration observations.
+      observe_q: append log(q / sigma_stat), the scale of the gap between the charge and
+          discharge break-even prices -- 18 observations instead of 17.
     """
-    def __init__(self, source, f, params, sigma_pred = None, f_sampler = None):
+    def __init__(self, source, f, params, sigma_pred = None, f_sampler = None,
+                 episode_sampler = None, norm = None, observe_q = False):
         super().__init__()
+        self.episode_sampler = episode_sampler
+        self.norm = CISO_NORM if norm is None else norm
+        self.observe_q = observe_q
+        self.calib_features = CALIB_FEATURES + (["log_q_over_sigma_stat"] if observe_q else [])
 
         self.source = source
         self.f = f
@@ -47,7 +79,7 @@ class BatteryEnv(gym.Env):
         self.action_space = spaces.Discrete(3)
 
         self.observation_space = spaces.Box(
-            low = -np.inf, high = np.inf, shape = (17,), dtype = np.float32
+            low = -np.inf, high = np.inf, shape = (14 + len(self.calib_features),), dtype = np.float32
         )
         
         self.t = 0
@@ -61,17 +93,26 @@ class BatteryEnv(gym.Env):
         self.t = 0
         self.soc = self.params["S_0"]
 
-        if self.f_sampler is not None:
-            self.f = self.f_sampler(rng = self.np_random, T = self.T, q = self.q)
+        if self.episode_sampler is not None:
+            episode = self.episode_sampler(self.np_random, self.T)
+            self.q = episode["q"]
+            self.f = episode["f"]
             idx = np.clip(np.arange(self.T)[:, None] + self.KS[None, :], 0, self.T - 1)
             self.f_fwd = self.f[idx] - self.f[:, None]
+            self.X = episode["X"]
+            calib = episode["calib"]
+        else:
+            if self.f_sampler is not None:
+                self.f = self.f_sampler(rng = self.np_random, T = self.T, q = self.q)
+                idx = np.clip(np.arange(self.T)[:, None] + self.KS[None, :], 0, self.T - 1)
+                self.f_fwd = self.f[idx] - self.f[:, None]
+            self.X = self.source.sample(T=self.T, rng=self.np_random)
+            calib = self.source.calib
 
-        self.X = self.source.sample(T=self.T, rng=self.np_random)
-
-        theta, mu, sigma = self.source.calib                     
-        self.sigma_pred = sigma / np.sqrt(2 * theta)            
+        theta, mu, sigma = calib
+        self.sigma_pred = sigma / np.sqrt(2 * theta)
         self.reward_scale = 1.0 / (self.u_max * self.sigma_pred)
-        self.calib_obs = self._calib_obs(self.source.calib)     
+        self.calib_obs = self._calib_obs(calib)
 
         self.total_revenue = 0
         self.n_mask_violations = 0
@@ -107,13 +148,9 @@ class BatteryEnv(gym.Env):
         return self._obs(), reward, terminated, truncated, self._info()
     
     def _calib_obs(self, calib):
-        theta, mu, sigma = calib
-        sigma_stat = sigma / np.sqrt(2 * theta)
-        return np.array([
-            (np.log(theta)      - _LOGTH_M) / _LOGTH_S,
-            (mu / sigma_stat)                / _MUR_S,
-            (np.log(sigma_stat) - _LOGSS_M) / _LOGSS_S,
-        ], dtype=np.float32)
+        raw = raw_calib_features(calib, self.q)
+        return np.array([(raw[k] - self.norm[k][0]) / self.norm[k][1] for k in self.calib_features],
+                        dtype=np.float32)
     
     def _obs(self):
         t = min(self.t, self.T-1)
@@ -138,7 +175,7 @@ class BatteryEnv(gym.Env):
             head,                                       # 5
             self.f_fwd[t] / self.sigma_pred,            # 6  -> 5..10
             tail,                                       # 3
-            self.calib_obs,                             # 3  -> 14..16
+            self.calib_obs,                             # 3 or 4 -> 14..16 (17 if observe_q)
         ]).astype(np.float32)
     
     def _info(self):

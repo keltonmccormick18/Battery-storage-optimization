@@ -8,10 +8,10 @@ import numpy as np
 from src.rl.evaluate import replay_batch, dp_predict_fn
 
 
-def check_determinism(windows, make_predict_fn):
+def check_determinism(windows, make_predict_fn, env_kwargs=None):
     """Two identical replays must produce identical actions and revenue."""
-    a = replay_batch(windows, make_predict_fn(windows), record_actions=True)
-    b = replay_batch(windows, make_predict_fn(windows), record_actions=True)
+    a = replay_batch(windows, make_predict_fn(windows), record_actions=True, env_kwargs=env_kwargs)
+    b = replay_batch(windows, make_predict_fn(windows), record_actions=True, env_kwargs=env_kwargs)
     if not (np.array_equal(a["actions"], b["actions"]) and np.array_equal(a["revenue"], b["revenue"])):
         raise AssertionError("policy is not deterministic on replay")
 
@@ -23,7 +23,7 @@ def perturb_future(w, cut, rng):
     return {**w, "X_eval_resid": x, "prices": w["f_eval"] + x}
 
 
-def check_no_lookahead(windows, make_predict_fn, cuts=(24, 84, 150), seed=0):
+def check_no_lookahead(windows, make_predict_fn, cuts=(24, 84, 150), seed=0, env_kwargs=None):
     """Actions through hour `cut` must not change when prices after `cut` change.
 
     Returns the share of cases where actions *after* the cut did change. If that is
@@ -33,8 +33,8 @@ def check_no_lookahead(windows, make_predict_fn, cuts=(24, 84, 150), seed=0):
     cases = [(i, c) for i in range(len(windows)) for c in cuts]
     base_ws = [windows[i] for i, _ in cases]
     pert_ws = [perturb_future(windows[i], c, rng) for i, c in cases]
-    base = replay_batch(base_ws, make_predict_fn(base_ws), record_actions=True)["actions"]
-    pert = replay_batch(pert_ws, make_predict_fn(pert_ws), record_actions=True)["actions"]
+    base = replay_batch(base_ws, make_predict_fn(base_ws), record_actions=True, env_kwargs=env_kwargs)["actions"]
+    pert = replay_batch(pert_ws, make_predict_fn(pert_ws), record_actions=True, env_kwargs=env_kwargs)["actions"]
 
     for k, (i, c) in enumerate(cases):
         before_b, before_p = base[:c + 1, k], pert[:c + 1, k]
