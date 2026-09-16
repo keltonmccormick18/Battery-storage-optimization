@@ -30,7 +30,10 @@ def git_state():
     try:
         commit = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"],
                                 capture_output=True, text=True, check=True).stdout.strip()
-        dirty = bool(subprocess.run(["git", "-C", str(ROOT), "status", "--porcelain"],
+        # Exclude results/: this run writes there, and earlier runs in the same batch do
+        # too, so including it would report dirt the evaluation itself created.
+        dirty = bool(subprocess.run(["git", "-C", str(ROOT), "status", "--porcelain",
+                                     "--", ":(exclude)results"],
                                     capture_output=True, text=True).stdout.strip())
         return commit, dirty
     except (OSError, subprocess.CalledProcessError):
