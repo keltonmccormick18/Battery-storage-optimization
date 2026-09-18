@@ -91,17 +91,16 @@ def evaluate_dp(market, windows):
     return pd.DataFrame(rows), np.array(sim_revenues)
 
 
-def replay_batch(windows, predict_fn, record_actions=False, env_kwargs=None):
-    """Replay one env per window in lockstep, calling predict_fn once per hour for all of them.
+def rollout_batch(envs, predict_fn, reset_seeds, record_actions=False):
+    """Step envs in lockstep, calling predict_fn once per hour for all of them.
 
     predict_fn(obs, masks, envs) -> actions, with obs (n, obs_dim) and masks (n, 3).
     envs is passed so non-learned policies (DP, baselines) can read env state; any
     predict_fn must use only information available at env.t (gates.check_no_lookahead).
     """
-    envs = [replay_env(w, env_kwargs) for w in windows]
     T = envs[0].T
-    assert all(e.T == T for e in envs), "windows must share an episode length"
-    obs = np.stack([e.reset(seed=0)[0] for e in envs])
+    assert all(e.T == T for e in envs), "envs must share an episode length"
+    obs = np.stack([e.reset(seed=s)[0] for e, s in zip(envs, reset_seeds)])
     soc_end = np.full(len(envs), np.nan)
     actions = np.zeros((T, len(envs)), dtype=np.int8) if record_actions else None
     for t in range(T):
@@ -118,6 +117,12 @@ def replay_batch(windows, predict_fn, record_actions=False, env_kwargs=None):
         "violations": np.array([e.n_mask_violations for e in envs]),
         "actions": actions,
     }
+
+
+def replay_batch(windows, predict_fn, record_actions=False, env_kwargs=None):
+    """Replay one env per historical window. Replay is deterministic; reset seed is 0."""
+    envs = [replay_env(w, env_kwargs) for w in windows]
+    return rollout_batch(envs, predict_fn, [0] * len(envs), record_actions)
 
 
 def evaluate_agent(market, windows, predict_fn, method, record_actions=False, env_kwargs=None):

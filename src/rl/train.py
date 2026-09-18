@@ -1,3 +1,6 @@
+"""Experiment 01 (PPO configuration freeze) training code, used by scripts/run_config.py.
+Kept unchanged so that experiment is reproducible. Production training is
+src/rl/training.py and scripts/train.py."""
 import numpy as np
 from stable_baselines3.common.vec_env import DummyVecEnv
 from sb3_contrib import MaskablePPO

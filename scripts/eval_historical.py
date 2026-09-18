@@ -10,7 +10,6 @@ validity rule in docs/experiments/scoring_rule.md.
 import argparse
 import hashlib
 import json
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,20 +24,7 @@ from src.rl.evaluate import evaluate_agent, sb3_predict_fn, check_validity, save
 from src.rl.gates import check_determinism, check_no_lookahead
 from src.baselines import BASELINES
 from src.rl.priors import ENV_KWARGS
-
-
-def git_state():
-    try:
-        commit = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"],
-                                capture_output=True, text=True, check=True).stdout.strip()
-        # Exclude results/: this run writes there, and earlier runs in the same batch do
-        # too, so including it would report dirt the evaluation itself created.
-        dirty = bool(subprocess.run(["git", "-C", str(ROOT), "status", "--porcelain",
-                                     "--", ":(exclude)results"],
-                                    capture_output=True, text=True).stdout.strip())
-        return commit, dirty
-    except (OSError, subprocess.CalledProcessError):
-        return "unknown", None
+from src.provenance import git_state
 
 
 def run(market, predict_fn, name, model_path=None, check_weeks=6, save_actions=False, results_dir=None,
