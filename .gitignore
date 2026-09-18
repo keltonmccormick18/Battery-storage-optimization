@@ -6,3 +6,4 @@ results/windows_*.npz
 runs*/
 ckpt*/
 logs/
+results/pool_*.npz

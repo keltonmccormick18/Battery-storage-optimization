@@ -16,9 +16,10 @@ from src.rl.env import BatteryEnv
 from src.rl.sources import OUSource, RandomizedOUSource, sample_calib, sample_f
 from src.rl.priors import NYIS_PRIOR, ENV_KWARGS, draw_scenario, make_episode_sampler
 from src.rl.evaluate import rollout_batch
+from src.rl.bootstrap import make_bootstrap_sampler
 
 MARKETS = ("CISO", "NYIS")
-SOURCES = ("ou",)                 # "bootstrap" is added in step 1d
+SOURCES = ("ou", "bootstrap")
 EPISODE_HOURS = 336
 MC_SEED = 999                     # multi-calibration cases, as in experiment 01
 N_MC_CASES = 20
@@ -71,10 +72,34 @@ def training_params(market):
     return {**BASE_PARAMS, "q": 42.0}
 
 
+def scenario_drawer(market, params):
+    """Draw q, an OU calibration and a seasonal forecast from the market's training prior.
+
+    The OU and bootstrap sources share this, so they differ only in the price path.
+    """
+    if market == "CISO":
+        q = params["q"]
+
+        def draw(rng, T):
+            return {"q": q, "calib": sample_calib(rng), "f": sample_f(rng, T, q)}
+    elif market == "NYIS":
+        def draw(rng, T):
+            return draw_scenario(rng, NYIS_PRIOR, T)
+    else:
+        raise ValueError(f"unknown market {market!r}")
+    return draw
+
+
 def make_training_env(market, source, params):
     """One raw (unwrapped) training environment."""
     if source not in SOURCES:
         raise ValueError(f"unknown training source {source!r}; available: {SOURCES}")
+    if market not in MARKETS:
+        raise ValueError(f"unknown market {market!r}")
+    if source == "bootstrap":
+        sampler = make_bootstrap_sampler(market, scenario_drawer(market, params))
+        return BatteryEnv(None, np.zeros(EPISODE_HOURS), params, episode_sampler=sampler,
+                          **ENV_KWARGS[market])
     if market == "CISO":
         f_init = sample_f(np.random.default_rng(), EPISODE_HOURS, params["q"])   # replaced at first reset
         return BatteryEnv(RandomizedOUSource(), f_init, params, f_sampler=sample_f)
