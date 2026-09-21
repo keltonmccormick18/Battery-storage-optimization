@@ -58,20 +58,27 @@ def method_groups(table):
 
 
 def paired_comparison(table, methods, market, baseline="dp"):
-    """Paired weekly comparison of one policy (averaged over its seeds) against the baseline."""
+    """Paired weekly comparison of one policy against a baseline, both averaged over their seeds.
+
+    baseline is a method name or, for a head-to-head between two trained policies, a list of
+    the baseline's seed methods. The equivalence margin is the one registered for comparisons
+    against the DP; applying it to another baseline is an analogy, not a registered rule.
+    """
     wide = table.pivot(index="week_idx", columns="method", values="score")
-    delta = (wide[methods].mean(axis=1) - wide[baseline]).to_numpy()
+    base_methods = [baseline] if isinstance(baseline, str) else list(baseline)
+    base = wide[base_methods].mean(axis=1)
+    delta = (wide[methods].mean(axis=1) - base).to_numpy()
     lo, hi = block_bootstrap_ci(delta)
     margin = MARGIN[market]
-    per_seed = [float((wide[m] - wide[baseline]).mean()) for m in methods]
+    per_seed = [float((wide[m] - base).mean()) for m in methods]
     return {
         "weeks": len(delta),
         "seeds": len(methods),
         "mean_delta": float(delta.mean()),
-        "pct_of_dp": float(delta.mean() / wide[baseline].mean()),
+        "pct_of_baseline": float(delta.mean() / base.mean()),
         "ci_low": lo,
         "ci_high": hi,
-        "beats_dp": float((delta > 0).mean()),
+        "beats_baseline": float((delta > 0).mean()),
         "seed_min": min(per_seed),
         "seed_max": max(per_seed),
         "block": block_length(len(delta)),

@@ -21,7 +21,10 @@ from src.rl.evaluate import summarize
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--markets", nargs="+", default=["CISO", "NYIS"])
-    a = ap.parse_args()
+    ap.add_argument("--head-to-head", nargs=2, default=["rl_boot", "rl_ou"],
+                    metavar=("A", "B"), help="paired comparison of two policies, A against B")
+    a_args = ap.parse_args()
+    a = a_args
 
     for market in a.markets:
         table = pd.read_csv(ROOT / "results" / f"historical_{market}.csv",
@@ -44,8 +47,19 @@ def main():
             capture = f"{s['value_capture']:.1%}" if s else ""
             ci = f"[{r['ci_low']:+,.0f}, {r['ci_high']:+,.0f}]"
             seeds = f" ({r['seeds']} seeds: {r['seed_min']:+,.0f} to {r['seed_max']:+,.0f})" if r["seeds"] > 1 else ""
-            print(f"   {label:12s} {capture:>8s} ${r['mean_delta']:>+10,.0f} {r['pct_of_dp']:>+8.1%} "
-                  f"{ci:>20s} {r['beats_dp']:>9.0%}  {r['verdict']}{seeds}")
+            print(f"   {label:12s} {capture:>8s} ${r['mean_delta']:>+10,.0f} {r['pct_of_baseline']:>+8.1%} "
+                  f"{ci:>20s} {r['beats_baseline']:>9.0%}  {r['verdict']}{seeds}")
+
+        groups = method_groups(table)
+        a, b = a_args.head_to_head
+        if a in groups and b in groups:
+            r = paired_comparison(table, groups[a], market, baseline=groups[b])
+            ci = f"[{r['ci_low']:+,.0f}, {r['ci_high']:+,.0f}]"
+            verdict = r["verdict"].replace("DP", b)
+            print(f"   head to head: {a} vs {b}  ${r['mean_delta']:>+9,.0f} ({r['pct_of_baseline']:+.1%})  "
+                  f"95% CI {ci}  {a} ahead in {r['beats_baseline']:.0%} of weeks  ->  {verdict}")
+        elif a in groups or b in groups:
+            print(f"   head to head {a} vs {b}: skipped, only one of them is in the results")
         print()
 
 
