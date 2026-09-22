@@ -233,8 +233,10 @@ Each was committed before the results it governs existed:
         training.py      SB3 wiring
         evaluate.py      historical evaluation harness
         gates.py         determinism and lookahead checks
-    scripts/             training, evaluation, comparison, and check scripts
+    scripts/             training, evaluation, comparison, figure and check scripts
+    notebooks/           01 exploration, 02 model fitting, 03 DP results, 04 RL comparison
     docs/experiments/    registered decisions
+    figures/             figures used above, rebuilt by scripts/make_figures.py
     results/             per-week scores for every method, with provenance
 
 ## Usage
