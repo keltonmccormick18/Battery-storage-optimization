@@ -1,0 +1,40 @@
+{
+  "name": "rl_bootstrap_NYIS_s104",
+  "market": "NYIS",
+  "source": "bootstrap",
+  "seed": 104,
+  "total_timesteps": 2000000,
+  "smoke_test": false,
+  "eval_freq": 100000,
+  "n_envs": 16,
+  "ppo": {
+    "gamma": 1.0,
+    "gae_lambda": 0.95,
+    "n_steps": 512,
+    "batch_size": 512,
+    "n_epochs": 10,
+    "learning_rate": 0.0003,
+    "ent_coef": 0.01,
+    "policy_kwargs": {
+      "net_arch": [
+        128,
+        128
+      ]
+    },
+    "device": "cpu"
+  },
+  "git_commit": "577cbe685424ace6f9e4379a1377eb128b7f7836",
+  "git_dirty": false,
+  "versions": {
+    "python": "3.13.15",
+    "torch": "2.11.0+cpu",
+    "stable_baselines3": "2.9.0",
+    "sb3_contrib": "2.9.0"
+  },
+  "started_at": "2026-09-21T15:27:14+00:00",
+  "status": "finished",
+  "finished_at": "2026-09-21T15:46:23+00:00",
+  "train_seconds": 1119,
+  "final_model": "/content/drive/MyDrive/battery_rl/models/rl_bootstrap_NYIS_s104_final.zip",
+  "final_model_sha256": "94fa4bcdb14ca50594d7b0657e53679f944d62a0cd34e521942eaa59d565f43c"
+}

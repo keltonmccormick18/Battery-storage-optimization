@@ -1,0 +1,11 @@
+{
+  "market": "NYIS",
+  "method": "rl_ou_s104",
+  "weeks": 333,
+  "model_path": "/content/drive/MyDrive/battery_rl/models/rl_ou_NYIS_s104_final.zip",
+  "model_sha256": "9724e1dea4945df052d412da879c94cc25b989a009c4b702c823a92a2a13e1e7",
+  "git_commit": "ae597707adc0de956a6acc51708d53f0c85981c0",
+  "git_dirty": false,
+  "observe_q": true,
+  "evaluated_at": "2026-09-22T04:46:55+00:00"
+}

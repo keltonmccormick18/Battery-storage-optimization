@@ -1,0 +1,40 @@
+{
+  "name": "rl_ou_NYIS_s100",
+  "market": "NYIS",
+  "source": "ou",
+  "seed": 100,
+  "total_timesteps": 2000000,
+  "smoke_test": false,
+  "eval_freq": 100000,
+  "n_envs": 16,
+  "ppo": {
+    "gamma": 1.0,
+    "gae_lambda": 0.95,
+    "n_steps": 512,
+    "batch_size": 512,
+    "n_epochs": 10,
+    "learning_rate": 0.0003,
+    "ent_coef": 0.01,
+    "policy_kwargs": {
+      "net_arch": [
+        128,
+        128
+      ]
+    },
+    "device": "cpu"
+  },
+  "git_commit": "456aae0cd00cb12062feb04f2c0c110f36e2f14b",
+  "git_dirty": false,
+  "versions": {
+    "python": "3.13.15",
+    "torch": "2.11.0+cpu",
+    "stable_baselines3": "2.9.0",
+    "sb3_contrib": "2.9.0"
+  },
+  "started_at": "2026-09-18T14:42:04+00:00",
+  "status": "finished",
+  "finished_at": "2026-09-18T15:17:41+00:00",
+  "train_seconds": 2100,
+  "final_model": "/content/drive/MyDrive/battery_rl/models/rl_ou_NYIS_s100_final.zip",
+  "final_model_sha256": "27b7e554337ca11fe6ab530359fe865b8b4d9755ee26b677cab1404befae7f3e"
+}

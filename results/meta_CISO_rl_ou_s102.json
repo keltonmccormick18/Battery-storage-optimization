@@ -1,0 +1,11 @@
+{
+  "market": "CISO",
+  "method": "rl_ou_s102",
+  "weeks": 114,
+  "model_path": "/content/drive/MyDrive/battery_rl/models/rl_ou_CISO_s102_final.zip",
+  "model_sha256": "a9ad699323a2804d3c8fb62e6915d296e51323d84ab52afb1f3b5f3bb147d95b",
+  "git_commit": "ae597707adc0de956a6acc51708d53f0c85981c0",
+  "git_dirty": false,
+  "observe_q": false,
+  "evaluated_at": "2026-09-22T04:42:28+00:00"
+}

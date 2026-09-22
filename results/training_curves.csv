@@ -1,0 +1,41 @@
+run,step,value,metric,source
+wide priors (first attempt),100000,85.9,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+wide priors (first attempt),200000,85.8,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+wide priors (first attempt),300000,82.4,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+wide priors (first attempt),400000,78.8,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+wide priors (first attempt),500000,81.4,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+wide priors (first attempt),600000,81.0,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+wide priors (first attempt),700000,79.7,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+wide priors (first attempt),800000,76.4,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+wide priors (first attempt),900000,79.2,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+wide priors (first attempt),1000000,80.6,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+wide priors (first attempt),1100000,77.9,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+wide priors (first attempt),1200000,78.1,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+wide priors (first attempt),1300000,76.0,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+wide priors (first attempt),1400000,73.7,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+wide priors (first attempt),1500000,76.2,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+wide priors (first attempt),1600000,75.4,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+wide priors (first attempt),1700000,72.4,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+wide priors (first attempt),1800000,74.0,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+wide priors (first attempt),1900000,74.7,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+wide priors (first attempt),2000000,72.8,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+priors matched to measured calibrations,100000,87.5,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+priors matched to measured calibrations,200000,86.9,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+priors matched to measured calibrations,300000,84.9,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+priors matched to measured calibrations,400000,84.2,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+priors matched to measured calibrations,500000,86.0,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+priors matched to measured calibrations,600000,84.2,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+priors matched to measured calibrations,700000,85.5,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+priors matched to measured calibrations,800000,86.3,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+priors matched to measured calibrations,900000,86.7,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+priors matched to measured calibrations,1000000,86.5,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+priors matched to measured calibrations,1100000,86.1,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+priors matched to measured calibrations,1200000,87.9,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+priors matched to measured calibrations,1300000,88.2,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+priors matched to measured calibrations,1400000,88.4,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+priors matched to measured calibrations,1500000,89.3,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+priors matched to measured calibrations,1600000,91.0,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+priors matched to measured calibrations,1700000,91.2,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+priors matched to measured calibrations,1800000,89.5,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+priors matched to measured calibrations,1900000,88.0,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
+priors matched to measured calibrations,2000000,89.6,"eval/mc_pct_of_dp (single window, cash)",training console output; event files not retained
