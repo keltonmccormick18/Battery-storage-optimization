@@ -1,8 +1,16 @@
+# Analysis and the DP
 numpy
 pandas
-matplotlib
-seaborn
 scipy
 statsmodels
-duckdb
-gymnasium
+matplotlib
+seaborn
+duckdb              # data/extract.py only
+
+# Reinforcement learning. The version bounds matter: SB3 2.4 requires gymnasium < 1.1,
+# and installing an unpinned stable-baselines3 next to gymnasium 1.1 downgrades it mid-session.
+gymnasium>=1.0,<1.1
+stable-baselines3>=2.4,<2.5
+sb3-contrib>=2.4,<2.5
+torch>=2.2
+tensorboard
