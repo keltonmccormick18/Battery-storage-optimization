@@ -28,29 +28,31 @@ from src.provenance import git_state
 
 
 def run(market, predict_fn, name, model_path=None, check_weeks=6, save_actions=False, results_dir=None,
-        env_kwargs=None):
+        env_kwargs=None, shape_days=None):
     results_dir = Path(results_dir or ROOT / "results")
     commit, dirty = git_state()   # before this run writes anything
-    windows = get_windows(market)
+    windows = get_windows(market, shape_days=shape_days)
+    label = f"{market}_shape" if shape_days else market
 
     sample = [windows[i] for i in np.linspace(0, len(windows) - 1, check_weeks).round().astype(int)]
     same_policy = lambda ws: predict_fn          # an agent's policy doesn't depend on the week list
     check_determinism(sample, same_policy, env_kwargs)
     changed = check_no_lookahead(sample, same_policy, env_kwargs=env_kwargs)
-    print(f"[{name}] {market}: deterministic and no lookahead on {check_weeks} sample weeks "
+    print(f"[{name}] {label}: deterministic and no lookahead on {check_weeks} sample weeks "
           f"(later actions responded to changed prices in {changed:.0%} of cases; "
           f"0% means the policy ignores prices)", flush=True)
 
-    table, actions = evaluate_agent(market, windows, predict_fn, name, record_actions=save_actions,
+    table, actions = evaluate_agent(label, windows, predict_fn, name, record_actions=save_actions,
                                     env_kwargs=env_kwargs)
     check_validity(table)
 
-    path = save_results(table, market, results_dir)
+    path = save_results(table, label, results_dir)
     if save_actions:
-        np.savez_compressed(results_dir / f"actions_{market}_{name}.npz",
+        np.savez_compressed(results_dir / f"actions_{label}_{name}.npz",
                             actions=actions, week_idx=table.week_idx.values)
     meta = {
         "market": market,
+        "shape_days": shape_days,
         "method": name,
         "weeks": len(table),
         "model_path": str(model_path) if model_path else None,
@@ -60,10 +62,10 @@ def run(market, predict_fn, name, model_path=None, check_weeks=6, save_actions=F
         "observe_q": bool((env_kwargs or {}).get("observe_q", False)),
         "evaluated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
-    (results_dir / f"meta_{market}_{name}.json").write_text(json.dumps(meta, indent=2))
+    (results_dir / f"meta_{label}_{name}.json").write_text(json.dumps(meta, indent=2))
 
     s = summarize(table, name)
-    print(f"[{name}] {market}: {s['weeks']} weeks | mean score ${s['mean_score']:,.0f} | "
+    print(f"[{name}] {label}: {s['weeks']} weeks | mean score ${s['mean_score']:,.0f} | "
           f"value capture {s['value_capture']:.1%} | Sharpe {s['sharpe']:.2f} | "
           f"win rate {s['win_rate']:.0%} | wrote {path}")
     return table
@@ -80,6 +82,9 @@ def main():
     ap.add_argument("--check-weeks", type=int, default=6)
     ap.add_argument("--save-actions", action="store_true")
     ap.add_argument("--results-dir", default=None, help="default: results/ in the repo")
+    ap.add_argument("--shape-days", type=int, default=None,
+                    help="score on the intraday-shape-forecast windows (use 28) instead of the "
+                         "registered ones; writes to historical_{market}_shape.csv")
     a = ap.parse_args()
 
     name = a.name or a.baseline
@@ -97,7 +102,8 @@ def main():
         predict_fn = sb3_predict_fn(MaskablePPO.load(a.model, device="cpu"))
 
     run(a.market, predict_fn, name, model_path=a.model, check_weeks=a.check_weeks,
-        save_actions=a.save_actions, results_dir=a.results_dir, env_kwargs=ENV_KWARGS[a.market])
+        save_actions=a.save_actions, results_dir=a.results_dir, env_kwargs=ENV_KWARGS[a.market],
+        shape_days=a.shape_days)
 
 
 if __name__ == "__main__":

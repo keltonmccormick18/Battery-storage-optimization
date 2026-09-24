@@ -19,9 +19,9 @@ def mask_fn(env):
     return env.action_masks()
 
 
-def make_vec_env(market, source, params, n_envs):
+def make_vec_env(market, source, params, n_envs, forecast="base"):
     def factory():
-        return ActionMasker(make_training_env(market, source, params), mask_fn)
+        return ActionMasker(make_training_env(market, source, params, forecast), mask_fn)
     return DummyVecEnv([factory for _ in range(n_envs)])
 
 

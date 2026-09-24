@@ -40,6 +40,16 @@ NYIS_NORM = {
     "log_q_over_sigma_stat": (0.3312, 0.6525),
 }
 
+# Widened forecast-spread bound for the intraday shape forecast; everything else is unchanged,
+# because q, half-life, sigma/q, mean(f)/q and mu/sigma_stat are the same to two decimals under
+# both forecasts. Observed p1-p99 under the shape forecast is 0.10-0.68, and under NYIS_PRIOR's
+# own bound 13.5% of weeks fall outside the training support (docs/experiments/shape_forecast.md).
+# NYIS_NORM is unaffected: none of its four features involves the forecast spread.
+NYIS_PRIOR_SHAPE = {**NYIS_PRIOR, "f_std_over_q": (0.08, 0.80)}
+
+PRIORS = {"base": NYIS_PRIOR, "shape": NYIS_PRIOR_SHAPE}
+
+
 # BatteryEnv settings per market, shared by training and historical evaluation.
 ENV_KWARGS = {
     "CISO": {},

@@ -69,7 +69,14 @@ def walk_forward_backtest(data, windows=None, verbose=True):
         print(f"Unique revenues: {len(set([round(r['revenue']) for r in results]))}")
     return results
 
-def perfect_foresight(prices, soc_grid, params, return_soc=False):
+def deterministic_plan(prices, soc_grid, params):
+    """Backward induction over a known price path -> policy[t, soc_index], in MW.
+
+    Terminal value is q * SOC, so the plan maximises exactly the score defined in
+    docs/experiments/scoring_rule.md. Two callers give `prices` two meanings: the
+    realised prices (perfect foresight) or the seasonal forecast f alone
+    (src/baselines.forecast_optimal_predict_fn).
+    """
     T = len(prices)
     N_s = len(soc_grid)
     ds = soc_grid[1] - soc_grid[0]
@@ -111,7 +118,14 @@ def perfect_foresight(prices, soc_grid, params, return_soc=False):
         V = np.max(all_vals, axis=0)
         actions = np.array([u_max, 0, -u_max])
         policy[t] = actions[best_idx]
-    
+
+    return policy
+
+
+def perfect_foresight(prices, soc_grid, params, return_soc=False):
+    policy = deterministic_plan(prices, soc_grid, params)
+    T = len(prices)
+
     # Simulate
     soc = params["S_0"]
     rev = 0

@@ -1,0 +1,11 @@
+{
+  "market": "NYIS",
+  "method": "forecast_optimal",
+  "weeks": 333,
+  "model_path": null,
+  "model_sha256": null,
+  "git_commit": "56f520708efddfe8c1867e8300e409387f97ff05",
+  "git_dirty": true,
+  "observe_q": true,
+  "evaluated_at": "2026-09-23T19:33:22+00:00"
+}

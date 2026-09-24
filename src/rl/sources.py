@@ -8,9 +8,16 @@ def sample_calib(rng):
     mu         = rng.uniform(-0.9, 0.9) * sigma_stat
     return theta, mu, sigma
 
-def sample_f(rng, T=336, q=42.0):
-    level = q * (1 + rng.normal(0, 0.31))         
-    amp   = np.exp(rng.uniform(np.log(10), np.log(30)))
+# Forecast amplitude. "base" is the frozen CISO range (tag rl-config-frozen). "shape" is
+# widened for the intraday shape forecast, which is sharper and more variable: under "base",
+# 21% of shape-forecast CISO weeks fall outside the training support, against 0.9% under the
+# old forecast (docs/experiments/shape_forecast.md).
+AMP_RANGE = {"base": (10.0, 30.0), "shape": (7.0, 42.0)}
+
+
+def sample_f(rng, T=336, q=42.0, forecast="base"):
+    level = q * (1 + rng.normal(0, 0.31))
+    amp   = np.exp(rng.uniform(*np.log(AMP_RANGE[forecast])))
     t = np.arange(T)
 
     f = level + amp * np.sin(2 * np.pi * t / 24 + rng.uniform(0, 2 * np.pi))

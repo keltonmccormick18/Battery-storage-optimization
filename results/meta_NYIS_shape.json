@@ -1,0 +1,16 @@
+{
+  "market": "NYIS",
+  "label": "NYIS_shape",
+  "shape_days": 28,
+  "weeks": 333,
+  "methods": [
+    "dp",
+    "forecast_optimal",
+    "schedule",
+    "threshold",
+    "forecast_optimal_336"
+  ],
+  "git_commit": "56f520708efddfe8c1867e8300e409387f97ff05",
+  "git_dirty": true,
+  "evaluated_at": "2026-09-24T17:54:08+00:00"
+}

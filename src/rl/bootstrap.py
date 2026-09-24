@@ -23,18 +23,30 @@ import numpy as np
 import pandas as pd
 
 from src.price_model import fit_seasonal_fourier, build_fourier_features, estimate_ou_params
-from src.windows import ROOT, TRAIN_WINDOW, add_calendar
+from src.windows import (ROOT, TRAIN_WINDOW, SHAPE_DAYS, add_calendar,
+                         apply_shape, shape_profile)
 from src.rl.priors import THETA_MIN
 
 _META_KEYS = ("train_window", "theta", "sigma", "sigma_stat", "mean", "q_pool", "n_hours")
 
 
-def build_pool(market):
-    """Residuals of the hours before the first evaluation week, with one OU fit over all of them."""
+def build_pool(market, shape=False):
+    """Residuals of the hours before the first evaluation week, with one OU fit over all of them.
+
+    shape: subtract the intraday shape forecast instead of the plain Fourier curve, so the pool
+    carries the residuals of the forecast the policy will actually face.
+    """
     data = add_calendar(pd.read_csv(ROOT / "data" / f"prices_{market}.csv"))
     pool_df = data.iloc[:TRAIN_WINDOW].copy()
     model, cols = fit_seasonal_fourier(pool_df)
-    resid = pool_df["price_usd_mwh"].values - model.predict(build_fourier_features(pool_df, cols)).values
+    f_pool = model.predict(build_fourier_features(pool_df, cols)).values
+    if shape:
+        prices = pool_df["price_usd_mwh"].values
+        hod, dow = pool_df["hour_of_day"].values, pool_df["dow"].values
+        # profile from the pool's own last SHAPE_DAYS, the only history available to it
+        f_pool = apply_shape(f_pool, hod, dow,
+                             shape_profile(prices, hod, dow, len(prices), SHAPE_DAYS))
+    resid = pool_df["price_usd_mwh"].values - f_pool
     theta, _, sigma = estimate_ou_params(pd.Series(resid - resid.mean()))
     theta = max(theta, THETA_MIN)
     return {
@@ -52,27 +64,27 @@ def build_pool(market):
 
 
 @lru_cache(maxsize=None)
-def get_pool(market, cache_dir=None):
+def get_pool(market, cache_dir=None, shape=False):
     """Load the cached pool, building it on first use. Shared by all envs in a process."""
-    path = Path(cache_dir or ROOT / "results") / f"pool_{market}.npz"
+    path = Path(cache_dir or ROOT / "results") / f"pool_{market}{'_shape' if shape else ''}.npz"
     if path.exists():
         with np.load(path) as z:
             pool = {k: z[k] for k in z.files}
         if pool["train_window"] == TRAIN_WINDOW:
             return {k: (v.item() if v.ndim == 0 else v) for k, v in pool.items()}
-    pool = build_pool(market)
+    pool = build_pool(market, shape)
     path.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(path, **pool)
     return pool
 
 
-def make_bootstrap_sampler(market, drawer, pool=None):
+def make_bootstrap_sampler(market, drawer, pool=None, shape=False):
     """episode_sampler for BatteryEnv: prior scenario, real residual block scaled to it.
 
     drawer(rng, T) -> {"q", "calib", "f"} is the market's scenario prior, shared with the
     OU source so the two differ only in the price path.
     """
-    pool = pool or get_pool(market)
+    pool = pool or get_pool(market, shape=shape)
     resid, base, sigma_stat_pool = pool["resid"], pool["mean"], pool["sigma_stat"]
 
     def sample(rng, T):

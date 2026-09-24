@@ -26,9 +26,11 @@ from src.windows import load_windows
 FIG = ROOT / "figures"
 MARKETS = [("CISO", "CISO"), ("NYISO", "NYIS")]
 LABEL = {"pf": "perfect foresight", "dp": "DP (stochastic control)", "schedule": "fixed daily schedule",
-         "rl_boot": "RL, bootstrap-trained", "rl_ou": "RL, OU-trained", "threshold": "price threshold"}
+         "rl_boot": "RL, bootstrap-trained", "rl_ou": "RL, OU-trained", "threshold": "price threshold",
+         "forecast_optimal": "forecast-only optimal", "forecast_optimal_336": "forecast-only optimal (336h plan)"}
 COLOR = {"pf": "#8c8c8c", "dp": "#1f77b4", "schedule": "#2ca02c",
-         "rl_boot": "#d62728", "rl_ou": "#ff7f0e", "threshold": "#9467bd"}
+         "rl_boot": "#d62728", "rl_ou": "#ff7f0e", "threshold": "#9467bd",
+         "forecast_optimal": "#17becf", "forecast_optimal_336": "#9edae5"}
 
 plt.rcParams.update({"figure.dpi": 150, "savefig.dpi": 150, "font.size": 9,
                      "axes.spines.top": False, "axes.spines.right": False, "axes.grid": True,
@@ -44,7 +46,7 @@ def load(code):
     return t, series, dates
 
 
-def fig_paired(order=("schedule", "rl_boot", "rl_ou")):
+def fig_paired(order=("forecast_optimal", "schedule", "rl_boot", "rl_ou")):
     """Mean weekly difference with its 95% interval: the registered statistic, zoomed in.
 
     Weekly differences scatter across roughly +/-$5k, so plotting them on the same axis buries
@@ -71,13 +73,13 @@ def fig_paired(order=("schedule", "rl_boot", "rl_ou")):
         ax.set_xlabel("mean weekly difference  ($000)")
         ax.set_title(f"{name} · {len(s_)} weeks", loc="left")
     axes[0].text(0.0, -0.42, "Diamond: mean paired weekly difference. Bar: 95% circular block-bootstrap CI. "
-                 "Top three rows are against the DP;\nbottom row compares the two RL agents. "
+                 "Top four rows are against the DP;\nbottom row compares the two RL agents. "
                  "Price threshold omitted (−\$9.3k CISO, −\$7.5k NYISO).",
                  transform=axes[0].transAxes, fontsize=7, color="#555")
     fig.tight_layout(); fig.savefig(FIG / "paired_vs_dp.png", bbox_inches="tight"); plt.close(fig)
 
 
-def fig_cumulative(order=("pf", "dp", "schedule", "rl_boot", "rl_ou", "threshold")):
+def fig_cumulative(order=("pf", "forecast_optimal", "dp", "schedule", "rl_boot", "rl_ou", "threshold")):
     fig, axes = plt.subplots(1, 2, figsize=(9, 3.6))
     for ax, (name, code) in zip(axes, MARKETS):
         _, s, dates = load(code)
@@ -155,9 +157,87 @@ def fig_training_curves():
     fig.tight_layout(); fig.savefig(FIG / "training_curves.png", bbox_inches="tight"); plt.close(fig)
 
 
+def fig_residual_skill(horizons=(1, 2, 3, 4, 6, 8, 12, 18, 24)):
+    """Why modelling the residual does not pay: the OU model's skill is in the wrong component.
+
+    Top row: RMSE of the h-step-ahead forecast of the raw residual. Bottom row: the same for
+    the residual with its centred 24-hour local level removed -- the only part arbitrage can
+    monetise, since adding a constant to every price of the day changes no charge/discharge
+    decision. The fitted OU beats the unconditional mean on the raw residual and loses to it
+    on the level-removed part at every horizon the battery plans over.
+    """
+    fig, axes = plt.subplots(2, 2, figsize=(9, 6.2), sharex=True)
+    for col, (name, code) in enumerate(MARKETS):
+        W = load_windows(ROOT / "results" / f"windows_{code}.npz")
+        raw = {k: [] for k in ("OU model (fitted)", "hold current value", "unconditional mean")}
+        lvl = {k: [] for k in raw}
+        for h in horizons:
+            acc = {k: ([], []) for k in raw}
+            for w in W:
+                X = w["X_eval_resid"][:168]
+                ou = w["mu_eff"] + (X - w["mu_eff"]) * np.exp(-w["theta"] * h)
+                dl = lambda v: v - np.convolve(np.pad(v, 12, mode="edge"), np.ones(25) / 25, "same")[12:-12]
+                Xd, oud = dl(X), dl(ou)
+                for k, (r_, l_) in zip(raw, [(ou[:-h], oud[:-h]), (X[:-h], Xd[:-h]),
+                                             (np.zeros(len(X) - h), np.zeros(len(X) - h))]):
+                    acc[k][0].append((X[h:] - r_) ** 2)
+                    acc[k][1].append((Xd[h:] - l_) ** 2)
+            for k in raw:
+                raw[k].append(np.sqrt(np.concatenate(acc[k][0]).mean()))
+                lvl[k].append(np.sqrt(np.concatenate(acc[k][1]).mean()))
+        hl = np.mean([np.log(2) / w["theta"] for w in W])
+        for row, (curves, title) in enumerate([(raw, "raw residual"),
+                                               (lvl, "level removed — the part arbitrage can use")]):
+            ax = axes[row, col]
+            ax.axvspan(12, 18, color="#cccccc", alpha=0.35, lw=0)
+            for (k, v), c, ls in zip(curves.items(), ("#1f77b4", "#ff7f0e", "#2ca02c"), ("-", "--", ":")):
+                ax.plot(horizons, v, ls, color=c, lw=1.6, marker="o", ms=3,
+                        label=k if (code == "CISO" and row == 0) else None)
+            ax.set_title(f"{name} · {title}" + (f" · fitted half-life {hl:.0f} h" if row == 0 else ""),
+                         loc="left", fontsize=8.5)
+            ax.set_ylabel("RMSE ($/MWh)")
+            if row == 1:
+                ax.set_xlabel("forecast horizon (hours ahead)")
+    axes[0, 0].legend(loc="lower right", fontsize=7.5)
+    axes[1, 0].text(0.0, -0.36, "Shaded: the 12-18 hour trough-to-peak horizon a 4-hour battery commits "
+                    "over. Top: the OU looks skilful, but it is\npredicting the slow price level. Bottom: on "
+                    "deviations from that level it is worse than assuming the residual away.",
+                    transform=axes[1, 0].transAxes, fontsize=7, color="#555")
+    fig.tight_layout(); fig.savefig(FIG / "residual_forecast_skill.png", bbox_inches="tight"); plt.close(fig)
+
+
+def fig_value_ceiling(order=("pf", "forecast_optimal", "dp", "schedule")):
+    """How much of the achievable value needs the residual at all.
+
+    The forecast-only optimal is the best any residual-blind policy can do, so the gap above
+    it is all the money the residual is worth, and the gap between it and the DP is what
+    modelling the residual actually earned.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(9, 3.2))
+    for ax, (name, code) in zip(axes, MARKETS):
+        _, s, _ = load(code)
+        means = [s[m].mean() for m in order]
+        pf = means[0]
+        y = np.arange(len(order))[::-1]
+        ax.barh(y, means, color=[COLOR[m] for m in order], height=0.6, alpha=0.9)
+        for yi, v in zip(y, means):
+            ax.text(v + pf * 0.015, yi, f"${v:,.0f}   {v / pf:.1%}", va="center", fontsize=7.5, color="#333")
+        ax.axvline(means[1], color="#17becf", lw=1, ls="--")
+        ax.set_yticks(y, [LABEL[m] for m in order])
+        ax.set_xlim(0, pf * 1.32)
+        ax.set_xlabel("mean weekly score ($)")
+        ax.set_title(f"{name} · {len(s)} weeks", loc="left")
+    axes[0].text(0.0, -0.34, "Dashed line: the ceiling for any policy that ignores the price residual. "
+                 "The residual is worth 18% (CISO) and 29%\n(NYISO) of perfect foresight; the DP "
+                 "captures none of it, landing below the ceiling in both markets.",
+                 transform=axes[0].transAxes, fontsize=7, color="#555")
+    fig.tight_layout(); fig.savefig(FIG / "value_ceiling.png", bbox_inches="tight"); plt.close(fig)
+
+
 def main():
     FIG.mkdir(exist_ok=True)
     fig_paired(); fig_cumulative(); fig_prior_vs_actual(); fig_training_curves()
+    fig_residual_skill(); fig_value_ceiling()
     for p in sorted(FIG.glob("*.png")):
         print(f"  {p.relative_to(ROOT)}  {p.stat().st_size / 1024:.0f} KB")
 

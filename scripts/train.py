@@ -44,12 +44,15 @@ def main():
     ap.add_argument("--source", required=True, choices=SOURCES)
     ap.add_argument("--seed", type=int, required=True)
     ap.add_argument("--steps", type=int, default=None, help="override TOTAL_TIMESTEPS (smoke tests only)")
+    ap.add_argument("--forecast", default="base", choices=["base", "shape"],
+                    help="training prior for the seasonal forecast; 'shape' matches the intraday "
+                         "shape forecast (docs/experiments/shape_forecast.md)")
     ap.add_argument("--eval-freq", type=int, default=EVAL_FREQ)
     ap.add_argument("--logdir", default="/content/runs")
     ap.add_argument("--ckptdir", default="/content/drive/MyDrive/battery_rl/models")
     a = ap.parse_args()
 
-    name = f"rl_{a.source}_{a.market}_s{a.seed}"
+    name = f"rl_{a.source}_{a.market}_s{a.seed}" + ("_shape" if a.forecast == "shape" else "")
     ckptdir = Path(a.ckptdir)
     ckptdir.mkdir(parents=True, exist_ok=True)          # fail fast on a bad path
     total = a.steps or TOTAL_TIMESTEPS
@@ -57,6 +60,7 @@ def main():
     manifest_path = ckptdir / f"{name}_manifest.json"
     manifest = {
         "name": name, "market": a.market, "source": a.source, "seed": a.seed,
+        "forecast": a.forecast,
         "total_timesteps": total, "smoke_test": a.steps is not None,
         "eval_freq": a.eval_freq, "n_envs": N_ENVS, "ppo": PPO,
         "git_commit": commit, "git_dirty": dirty,
@@ -70,12 +74,12 @@ def main():
 
     params = training_params(a.market)
     t0 = time.time()
-    cases = build_eval_cases(a.market, params)
+    cases = build_eval_cases(a.market, params, forecast=a.forecast)
     print(f"[{name}] {len(cases['mc'])} evaluation cases"
           f"{' + Gate 2 window' if cases['sw'] else ''} built in {time.time() - t0:.0f}s; "
           f"training {total:,} timesteps", flush=True)
 
-    venv = make_vec_env(a.market, a.source, params, N_ENVS)
+    venv = make_vec_env(a.market, a.source, params, N_ENVS, a.forecast)
     model = MaskablePPO("MlpPolicy", venv, seed=a.seed, verbose=0, tensorboard_log=a.logdir, **PPO)
     t0 = time.time()
     model.learn(total_timesteps=total, callback=MarketEvalCallback(cases, a.eval_freq), tb_log_name=name)

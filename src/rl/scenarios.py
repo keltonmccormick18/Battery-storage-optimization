@@ -4,7 +4,7 @@ No SB3 imports, so everything here runs and is tested locally; src/rl/training.p
 the SB3 wrappers. Settings are registered in docs/experiments/nyiso_setup.md (NYISO) and
 match experiment 01 exactly for CISO.
 """
-from functools import lru_cache
+from functools import lru_cache, partial
 
 import numpy as np
 import pandas as pd
@@ -14,7 +14,7 @@ from src.price_model import fit_seasonal_fourier, build_fourier_features, estima
 from src.optimization import build_transition_matrix, get_optimal_policy
 from src.rl.env import BatteryEnv
 from src.rl.sources import OUSource, RandomizedOUSource, sample_calib, sample_f
-from src.rl.priors import NYIS_PRIOR, ENV_KWARGS, draw_scenario, make_episode_sampler
+from src.rl.priors import PRIORS, ENV_KWARGS, draw_scenario, make_episode_sampler
 from src.rl.evaluate import rollout_batch
 from src.rl.bootstrap import make_bootstrap_sampler
 
@@ -72,7 +72,7 @@ def training_params(market):
     return {**BASE_PARAMS, "q": 42.0}
 
 
-def scenario_drawer(market, params):
+def scenario_drawer(market, params, forecast="base"):
     """Draw q, an OU calibration and a seasonal forecast from the market's training prior.
 
     The OU and bootstrap sources share this, so they differ only in the price path.
@@ -81,31 +81,33 @@ def scenario_drawer(market, params):
         q = params["q"]
 
         def draw(rng, T):
-            return {"q": q, "calib": sample_calib(rng), "f": sample_f(rng, T, q)}
+            return {"q": q, "calib": sample_calib(rng), "f": sample_f(rng, T, q, forecast)}
     elif market == "NYIS":
         def draw(rng, T):
-            return draw_scenario(rng, NYIS_PRIOR, T)
+            return draw_scenario(rng, PRIORS[forecast], T)
     else:
         raise ValueError(f"unknown market {market!r}")
     return draw
 
 
-def make_training_env(market, source, params):
+def make_training_env(market, source, params, forecast="base"):
     """One raw (unwrapped) training environment."""
     if source not in SOURCES:
         raise ValueError(f"unknown training source {source!r}; available: {SOURCES}")
     if market not in MARKETS:
         raise ValueError(f"unknown market {market!r}")
     if source == "bootstrap":
-        sampler = make_bootstrap_sampler(market, scenario_drawer(market, params))
+        sampler = make_bootstrap_sampler(market, scenario_drawer(market, params, forecast),
+                                         shape=(forecast == "shape"))
         return BatteryEnv(None, np.zeros(EPISODE_HOURS), params, episode_sampler=sampler,
                           **ENV_KWARGS[market])
     if market == "CISO":
-        f_init = sample_f(np.random.default_rng(), EPISODE_HOURS, params["q"])   # replaced at first reset
-        return BatteryEnv(RandomizedOUSource(), f_init, params, f_sampler=sample_f)
+        f_init = sample_f(np.random.default_rng(), EPISODE_HOURS, params["q"], forecast)  # replaced at first reset
+        sampler = partial(sample_f, forecast=forecast)
+        return BatteryEnv(RandomizedOUSource(), f_init, params, f_sampler=sampler)
     if market == "NYIS":
         return BatteryEnv(None, np.zeros(EPISODE_HOURS), params,
-                          episode_sampler=make_episode_sampler(NYIS_PRIOR), **ENV_KWARGS["NYIS"])
+                          episode_sampler=make_episode_sampler(PRIORS[forecast]), **ENV_KWARGS["NYIS"])
     raise ValueError(f"unknown market {market!r}")
 
 
@@ -143,7 +145,7 @@ def make_case(label, calib, f, q, seeds, env_kwargs, keep_policy=False):
     return case
 
 
-def build_eval_cases(market, params, n_cases=N_MC_CASES, keep_policy=False):
+def build_eval_cases(market, params, n_cases=N_MC_CASES, keep_policy=False, forecast="base"):
     """Multi-calibration cases drawn from the market's training prior; plus, for CISO only,
     the Gate 2 single-window case kept for continuity with experiment 01."""
     env_kwargs = ENV_KWARGS[market]
@@ -152,10 +154,10 @@ def build_eval_cases(market, params, n_cases=N_MC_CASES, keep_policy=False):
     for c in range(n_cases):
         if market == "CISO":
             calib = sample_calib(rng)
-            f = sample_f(rng, EPISODE_HOURS, params["q"])
+            f = sample_f(rng, EPISODE_HOURS, params["q"], forecast)
             q = params["q"]
         else:
-            s = draw_scenario(rng, NYIS_PRIOR, EPISODE_HOURS)
+            s = draw_scenario(rng, PRIORS[forecast], EPISODE_HOURS)
             calib, f, q = s["calib"], s["f"], s["q"]
         seeds = [20_000 + 100 * c + k for k in range(EPISODES_PER_CASE)]
         mc.append(make_case(f"mc{c}", calib, f, q, seeds, env_kwargs, keep_policy))

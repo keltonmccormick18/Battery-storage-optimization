@@ -1,0 +1,11 @@
+{
+  "market": "CISO",
+  "method": "forecast_optimal_336",
+  "weeks": 114,
+  "model_path": null,
+  "model_sha256": null,
+  "git_commit": "56f520708efddfe8c1867e8300e409387f97ff05",
+  "git_dirty": true,
+  "observe_q": false,
+  "evaluated_at": "2026-09-23T19:34:16+00:00"
+}

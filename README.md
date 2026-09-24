@@ -19,6 +19,7 @@ weekly differences against the DP, from a circular block bootstrap (10,000 resam
 | method | mean weekly score | value capture | Sharpe | vs DP | 95% CI | verdict |
 |---|---|---|---|---|---|---|
 | perfect foresight | $18,314 | 100% | 1.70 | — | — | ceiling |
+| forecast-only optimal † | $14,938 | 81.6% | 1.49 | +$379 (+2.6%) | [−22, +893] | inconclusive |
 | **DP (stochastic control)** | **$14,559** | **79.5%** | **1.47** | — | — | — |
 | fixed daily schedule | $14,216 | 77.6% | 1.48 | −$343 (−2.4%) | [−1,082, +407] | inconclusive |
 | RL, bootstrap-trained | $13,643 | 74.5% | 1.46 | −$915 (−6.3%) | [−1,776, −34] | underperforms DP |
@@ -30,6 +31,7 @@ weekly differences against the DP, from a circular block bootstrap (10,000 resam
 | method | mean weekly score | value capture | Sharpe | vs DP | 95% CI | verdict |
 |---|---|---|---|---|---|---|
 | perfect foresight | $16,674 | 100% | 1.29 | — | — | ceiling |
+| forecast-only optimal † | $11,839 | 71.0% | 1.38 | +$922 (+8.4%) | [+260, +1,626] | outperforms DP |
 | fixed daily schedule | $11,279 | 67.6% | 1.22 | +$362 (+3.3%) | [−243, +985] | inconclusive |
 | **DP (stochastic control)** | **$10,918** | **65.5%** | **1.32** | — | — | — |
 | RL, OU-trained | $9,245 | 55.4% | 1.59 | −$1,673 (−15.3%) | [−2,597, −939] | underperforms DP |
@@ -41,6 +43,12 @@ RL rows average five seeds. Per-seed differences against the DP span −$1,986 t
 −$3,069 to −$1,921 (NYISO, bootstrap).
 
 ![Mean weekly difference against the DP, with 95% intervals](figures/paired_vs_dp.png)
+
+† Added after the registered comparison was run: the best policy that knows only the seasonal
+forecast and never reads a realized price, so it bounds every residual-blind policy from above.
+A diagnostic benchmark, not a registered claim — see `docs/experiments/baselines.md`. Planned
+over the 168 scored hours; horizon-matched to the DP's 336 it scores $14,847 (CISO) and $11,646
+(NYISO), still +$289 and +$728 against the DP.
 
 ### Bootstrap against OU, head to head
 
@@ -60,6 +68,28 @@ A rule that charges in the four cheapest forecast hours and discharges in the fo
 never looking at a realized price — lands within noise of the DP in both markets, and slightly
 ahead of it in NYISO. Most of the achievable value is the shape of the average day, and the
 entire control problem is fought over the remainder.
+
+**Modelling the price residual earned nothing — the honest benchmark says less than nothing.**
+The best policy that knows only the seasonal forecast captures 81.6% (CISO) and 71.0% (NYISO)
+of perfect foresight, so all residual information in both markets is worth 18.4% and 29.0%.
+The fixed schedule already gets 95% of that residual-blind ceiling, which is why it ties the
+DP. The DP lands *below* the ceiling in both markets, significantly so in NYISO (+$922 for the
+ceiling, CI [+260, +1,626]).
+
+![How much of the achievable value needs the residual](figures/value_ceiling.png)
+
+**The reason is that the OU model has skill in the component arbitrage cannot use.** It
+forecasts the raw residual well one hour out (CISO RMSE $8.18 vs $17.03 unconditional), but a
+4-hour battery commits over 12–18 hours, and arbitrage depends on spreads, not levels — adding
+a constant to every price of a day changes no decision. Splitting the residual into its local
+24-hour level and the deviation from it, the fitted OU is *worse than assuming the residual
+away* on the deviation at every horizon past ~4 hours ($15.39 vs $11.61 at 12 hours in CISO).
+Its fitted half-lives, 17 h and 39 h, are far longer than the ~4–6 h at which that component
+actually decorrelates, so the DP extrapolates a signal that has already died. Sweeping the
+assumed half-life confirms it: a DP that treats the residual as permanent reproduces the
+forecast-only optimal exactly, and every increment of believed mean reversion costs money.
+
+![Where the residual model has skill, and where the battery needs it](figures/residual_forecast_skill.png)
 
 **Model-free RL did not beat model-based control.** All four confidence intervals exclude
 zero: both variants land below the DP in both markets, and below the schedule baseline too.
@@ -131,10 +161,17 @@ scoring ignores. Under this rule it never does. Registered in `docs/experiments/
 
 ### Baselines
 
-Both are parameter-free, so nothing is fitted to the evaluation weeks, and each isolates one
+All are parameter-free, so nothing is fitted to the evaluation weeks, and each isolates one
 source of value: **schedule** knows the typical daily shape but never sees a price, while
 **threshold** reacts to price against the value of stored energy but has no sense of timing.
 The second is exactly the greedy policy on the RL shaping reward.
+
+**forecast_optimal** was added after the registered comparison was scored, and is labeled as a
+diagnostic throughout. It solves the same backward induction as perfect foresight, but over the
+seasonal forecast instead of realized prices, then executes that plan against the real week —
+closed-loop in state of charge, blind to price. Since the forecast is fit on the training
+window, the policy is implementable rather than an oracle, and no residual-blind policy can
+beat it. It is the bar the DP has to clear for its residual model to be worth anything.
 
 ### Reinforcement learning
 
@@ -198,7 +235,7 @@ Each was committed before the results it governs existed:
 |---|---|
 | `docs/experiments/PPO_config.md` | PPO configuration, with thresholds and the scoring code fixed in advance |
 | `docs/experiments/scoring_rule.md` | how every method is scored, which statistics are reported, what counts as a claim |
-| `docs/experiments/baselines.md` | both baselines, parameter-free by construction |
+| `docs/experiments/baselines.md` | the two registered baselines, parameter-free by construction, plus a labeled post-hoc follow-up |
 | `docs/experiments/nyiso_setup.md` | NYISO training priors and the q observation |
 | `docs/experiments/bootstrap_source.md` | the bootstrap source, and its single-year pool limitation |
 
@@ -207,6 +244,10 @@ Each was committed before the results it governs existed:
 - Price-taker; no transaction costs, battery degradation, or ramp constraints.
 - The OU model has no jumps and no sustained trends. Real CISO residual innovations have excess
   kurtosis of 375 and weekly drift persisting at +0.26, against +0.03 for a fitted OU path.
+- A single OU factor cannot hold both a slow price level and fast hourly deviations, and the
+  MLE resolves this toward the level: it fits half-lives of 17 h and 39 h where the
+  arbitrage-relevant component decorrelates in 4–6 h. A two-factor residual is the first thing
+  to try, and the forecast-only optimal is the benchmark any successor has to beat.
 - Training priors are bounded by percentiles of all walk-forward calibrations, so an early
   evaluation week's agent saw a range partly informed by later data. The DP's mean-reversion
   coefficient has the same mild dependence. Both are disclosed rather than corrected.
@@ -221,7 +262,7 @@ Each was committed before the results it governs existed:
       optimization.py    transition matrix, backward induction
       simulation.py      forward simulation, walk-forward backtest
       dynamics.py        battery physics, shared by every method
-      baselines.py       schedule and threshold rules
+      baselines.py       schedule, threshold, and forecast-only optimal rules
       stats.py           paired block-bootstrap comparisons
       config.py          frozen PPO configuration
       rl/
@@ -252,7 +293,7 @@ python data/extract.py --region NYIS
 python scripts/capture_dp_reference.py
 python scripts/check_dp_reproduction.py
 
-# baselines
+# baselines (schedule, threshold, forecast_optimal, forecast_optimal_336)
 python scripts/eval_historical.py --market CISO --baseline schedule
 
 # train and score an agent
