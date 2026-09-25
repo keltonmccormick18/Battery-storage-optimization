@@ -21,19 +21,20 @@ from src.rl.evaluate import summarize
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--markets", nargs="+", default=["CISO", "NYIS"])
+    ap.add_argument("--suffix", default="", help="e.g. _shape to read historical_{market}_shape.csv")
     ap.add_argument("--head-to-head", nargs=2, default=["rl_boot", "rl_ou"],
                     metavar=("A", "B"), help="paired comparison of two policies, A against B")
     a_args = ap.parse_args()
     a = a_args
 
     for market in a.markets:
-        table = pd.read_csv(ROOT / "results" / f"historical_{market}.csv",
+        table = pd.read_csv(ROOT / "results" / f"historical_{market}{a.suffix}.csv",
                             float_precision="round_trip")
         dp = summarize(table, "dp")
         pf = summarize(table, "pf")
         warning = check_margin(table, market)
 
-        print(f"== {market}: {dp['weeks']} weeks | DP mean score ${dp['mean_score']:,.0f} "
+        print(f"== {market}{a.suffix}: {dp['weeks']} weeks | DP mean score ${dp['mean_score']:,.0f} "
               f"({dp['value_capture']:.1%} of perfect foresight, ${pf['mean_score']:,.0f})")
         if warning:
             print(f"   note: {warning}")
@@ -51,15 +52,15 @@ def main():
                   f"{ci:>20s} {r['beats_baseline']:>9.0%}  {r['verdict']}{seeds}")
 
         groups = method_groups(table)
-        a, b = a_args.head_to_head
-        if a in groups and b in groups:
-            r = paired_comparison(table, groups[a], market, baseline=groups[b])
+        h_a, h_b = a_args.head_to_head
+        if h_a in groups and h_b in groups:
+            r = paired_comparison(table, groups[h_a], market, baseline=groups[h_b])
             ci = f"[{r['ci_low']:+,.0f}, {r['ci_high']:+,.0f}]"
-            verdict = r["verdict"].replace("DP", b)
-            print(f"   head to head: {a} vs {b}  ${r['mean_delta']:>+9,.0f} ({r['pct_of_baseline']:+.1%})  "
-                  f"95% CI {ci}  {a} ahead in {r['beats_baseline']:.0%} of weeks  ->  {verdict}")
-        elif a in groups or b in groups:
-            print(f"   head to head {a} vs {b}: skipped, only one of them is in the results")
+            verdict = r["verdict"].replace("DP", h_b)
+            print(f"   head to head: {h_a} vs {h_b}  ${r['mean_delta']:>+9,.0f} ({r['pct_of_baseline']:+.1%})  "
+                  f"95% CI {ci}  {h_a} ahead in {r['beats_baseline']:.0%} of weeks  ->  {verdict}")
+        elif h_a in groups or h_b in groups:
+            print(f"   head to head {h_a} vs {h_b}: skipped, only one of them is in the results")
         print()
 
 

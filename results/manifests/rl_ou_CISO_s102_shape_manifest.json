@@ -1,0 +1,41 @@
+{
+  "name": "rl_ou_CISO_s102_shape",
+  "market": "CISO",
+  "source": "ou",
+  "seed": 102,
+  "forecast": "shape",
+  "total_timesteps": 2000000,
+  "smoke_test": false,
+  "eval_freq": 100000,
+  "n_envs": 16,
+  "ppo": {
+    "gamma": 1.0,
+    "gae_lambda": 0.95,
+    "n_steps": 512,
+    "batch_size": 512,
+    "n_epochs": 10,
+    "learning_rate": 0.0003,
+    "ent_coef": 0.01,
+    "policy_kwargs": {
+      "net_arch": [
+        128,
+        128
+      ]
+    },
+    "device": "cpu"
+  },
+  "git_commit": "a6ae81cee82d0aa9400c83383ef4f43de96e4a83",
+  "git_dirty": false,
+  "versions": {
+    "python": "3.13.15",
+    "torch": "2.11.0+cpu",
+    "stable_baselines3": "2.9.0",
+    "sb3_contrib": "2.9.0"
+  },
+  "started_at": "2026-09-24T19:54:29+00:00",
+  "status": "finished",
+  "finished_at": "2026-09-24T20:45:06+00:00",
+  "train_seconds": 2961,
+  "final_model": "/content/drive/MyDrive/battery_rl/models/rl_ou_CISO_s102_shape_final.zip",
+  "final_model_sha256": "2616c7d10e66e597dfe9ada0d98d5adba947e1014271a9645f20cc4c10e7d3ba"
+}

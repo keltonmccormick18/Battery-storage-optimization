@@ -15,10 +15,17 @@ sys.path.insert(0, str(ROOT))
 import numpy as np
 import pandas as pd
 
-from src.stats import block_bootstrap_ci, paired_comparison, MARGIN
+from src.stats import block_bootstrap_ci, paired_comparison, method_groups, MARGIN
 from src.windows import get_windows, SHAPE_DAYS
 
-SHARED = ["dp", "forecast_optimal", "schedule", "threshold"]
+ORDER = ["forecast_optimal", "dp", "schedule", "rl_ou", "rl_boot", "threshold"]
+
+
+def grouped(t):
+    """Seed-averaged weekly score per method group, so rl_*_s1xx collapse to rl_ou / rl_boot."""
+    wide = t.pivot(index="week_idx", columns="method", values="score")
+    groups = {"dp": ["dp"], "pf": ["pf"], **method_groups(t)}
+    return pd.DataFrame({g: wide[cols].mean(axis=1) for g, cols in groups.items()})
 
 
 def load(market, shape):
@@ -33,15 +40,15 @@ def main():
 
     for market in a.markets:
         old, new = load(market, False), load(market, True)
-        wo = old.pivot(index="week_idx", columns="method", values="score")
-        wn = new.pivot(index="week_idx", columns="method", values="score")
+        wo, wn = grouped(old), grouped(new)
+        shared = [m for m in ORDER if m in wo.columns and m in wn.columns]
         pf_o, pf_n = wo["pf"].mean(), wn["pf"].mean()
         assert np.allclose(wo["pf"], wn["pf"]), f"{market}: perfect foresight moved between runs"
 
         print(f"\n== {market}: {len(wn)} weeks | perfect foresight ${pf_n:,.0f} (unchanged)")
         print(f"   {'method':20s} {'old f':>10s} {'shape f':>10s} {'change':>10s} "
               f"{'95% CI':>20s} {'of PF':>14s}")
-        for m in SHARED:
+        for m in shared:
             d = (wn[m] - wo[m]).to_numpy()
             lo, hi = block_bootstrap_ci(d)
             print(f"   {m:20s} ${wo[m].mean():>9,.0f} ${wn[m].mean():>9,.0f} "

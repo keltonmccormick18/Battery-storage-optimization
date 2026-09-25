@@ -1,0 +1,41 @@
+{
+  "name": "rl_ou_NYIS_s103_shape",
+  "market": "NYIS",
+  "source": "ou",
+  "seed": 103,
+  "forecast": "shape",
+  "total_timesteps": 2000000,
+  "smoke_test": false,
+  "eval_freq": 100000,
+  "n_envs": 16,
+  "ppo": {
+    "gamma": 1.0,
+    "gae_lambda": 0.95,
+    "n_steps": 512,
+    "batch_size": 512,
+    "n_epochs": 10,
+    "learning_rate": 0.0003,
+    "ent_coef": 0.01,
+    "policy_kwargs": {
+      "net_arch": [
+        128,
+        128
+      ]
+    },
+    "device": "cpu"
+  },
+  "git_commit": "a6ae81cee82d0aa9400c83383ef4f43de96e4a83",
+  "git_dirty": false,
+  "versions": {
+    "python": "3.13.15",
+    "torch": "2.11.0+cpu",
+    "stable_baselines3": "2.9.0",
+    "sb3_contrib": "2.9.0"
+  },
+  "started_at": "2026-09-24T22:26:11+00:00",
+  "status": "finished",
+  "finished_at": "2026-09-24T23:10:52+00:00",
+  "train_seconds": 2611,
+  "final_model": "/content/drive/MyDrive/battery_rl/models/rl_ou_NYIS_s103_shape_final.zip",
+  "final_model_sha256": "75630487812f4fe2c4ec4f72ab52bfdcb4b4cbcf0276ce7194cbb8812cf2cf44"
+}

@@ -61,6 +61,30 @@ Paired on identical weeks, seeds averaged:
 
 ![Cumulative score by method](figures/cumulative_pnl.png)
 
+### Under an improved forecast
+
+Replacing the Fourier curve's intraday shape with the mean shape of the last 28 days — no new
+data, no change to the controller — lifts every forecast-using method by $1,000-1,800 a week.
+The full experiment, its registered predictions and its validation are in
+`docs/experiments/shape_forecast.md`; results live in `results/historical_{market}_shape.csv`.
+
+| method | CISO | NYISO |
+|---|---|---|
+| perfect foresight | $18,314 (100%) | $16,674 (100%) |
+| forecast-only optimal † | $16,428 (89.7%) | $13,266 (79.6%) |
+| **DP (stochastic control)** | **$15,787 (86.2%)** | **$12,375 (74.2%)** |
+| fixed daily schedule | $15,029 (82.1%) | $11,762 (70.5%) |
+| RL, OU-trained | $14,889 (81.3%) | $10,830 (64.9%) |
+| RL, bootstrap-trained | $14,656 (80.0%) | $10,303 (61.8%) |
+| price threshold | $5,240 (28.6%) | $3,424 (20.5%) |
+
+Nothing reorders. RL still loses to the DP in all four comparisons with every interval excluding
+zero, so that result was not an artifact of a weak forecast. Neither agent clears the
+residual-blind ceiling either. Two things do change: the schedule falls further behind, because
+it collapses the forecast into one repeating daily pattern and structurally cannot use a sharper
+one, and bootstrap training becomes worse than OU training in both markets rather than only in
+NYISO.
+
 ## Key findings
 
 **A fixed daily timetable is statistically indistinguishable from the stochastic controller.**
@@ -93,6 +117,8 @@ forecast-only optimal exactly, and every increment of believed mean reversion co
 
 **Model-free RL did not beat model-based control.** All four confidence intervals exclude
 zero: both variants land below the DP in both markets, and below the schedule baseline too.
+Retraining both agents against the improved forecast reproduced this exactly — four more
+intervals, all excluding zero.
 The agents are more conservative rather than simply worse — in NYISO they win 99-100% of weeks
 at a Sharpe of 1.54-1.59 against the DP's 1.32, giving up upside to avoid bad weeks.
 
@@ -238,6 +264,7 @@ Each was committed before the results it governs existed:
 | `docs/experiments/baselines.md` | the two registered baselines, parameter-free by construction, plus a labeled post-hoc follow-up |
 | `docs/experiments/nyiso_setup.md` | NYISO training priors and the q observation |
 | `docs/experiments/bootstrap_source.md` | the bootstrap source, and its single-year pool limitation |
+| `docs/experiments/shape_forecast.md` | the intraday shape forecast: what was chosen in-sample, what was predicted before the re-run, and how the specification was validated |
 
 ## Assumptions and limitations
 
@@ -302,6 +329,13 @@ python scripts/eval_historical.py --market CISO --model <model>.zip --name rl_ou
 
 # comparison
 python scripts/compare_methods.py
+
+# the improved-forecast experiment: DP + baselines, agents, then both comparisons
+python scripts/run_shape_forecast.py
+python scripts/train.py --market CISO --source ou --seed 100 --forecast shape
+python scripts/eval_historical.py --market CISO --shape-days 28 --model <model>.zip --name rl_ou_s100
+python scripts/compare_methods.py --suffix _shape
+python scripts/compare_forecasts.py
 ```
 
 ## Future directions
@@ -309,8 +343,13 @@ python scripts/compare_methods.py
 - **Degradation costs**, where the DP's state space stops being tractable and RL's flexibility
   would actually pay; the same change makes continuous action spaces meaningful, since bang-bang
   is provably optimal without a convex cost.
-- **A two-factor OU model.** The residual decomposes into a fast component (half-life ~11h) and
-  a slow one (~240h), which one AR(1) cannot represent; the fitted half-life swings from 2h to
-  228h across windows as a result.
+- ~~A two-factor OU model.~~ **Tested and it does not help.** Splitting the residual into a slow
+  level and a fast deviation, carrying the level in the plan and giving the DP the correctly-fast
+  component as its state, scores $14,457 (CISO) and $10,735 (NYISO) — slightly *worse* than the
+  shipped DP and well below ignoring the residual. Perfect knowledge of the next two hours is
+  worth −$55 a week, so no estimator of the residual's own dynamics can pay for a 4-hour battery.
+- **Exogenous drivers for the forecast**, which is where the remaining money is. The shape
+  forecast captures roughly half of the available within-day shape value; the rest needs load,
+  wind and solar forecasts and temperature, which the price history cannot supply.
 - **Certainty-equivalent MPC**, the strongest realistic industry competitor not yet measured.
 - **Transaction costs**, to find the level at which the arbitrage stops being viable.

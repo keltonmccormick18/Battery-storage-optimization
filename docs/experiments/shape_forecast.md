@@ -58,10 +58,9 @@ Written to `results/historical_{market}_shape.csv`, leaving the registered resul
 the two forecasts can be compared week by week. Every method is reported regardless of outcome,
 and the predictions above are reported as met or failed.
 
-## Not covered
-The two RL agents are **not** re-run in this experiment. Retraining them needs the Colab
-pipeline; until that happens the RL rows under this forecast do not exist, and no claim is made
-about them. The training changes they require are specified below.
+## The RL agents
+Both agents were retrained under this forecast on 2026-09-25, with the widened forecast-spread
+priors specified below. Results are in the final section.
 
 ## Training under this forecast
 Measured rather than assumed. Comparing the 114 CISO and 333 NYISO calibrations under both
@@ -200,3 +199,53 @@ windows. The price CSVs end 2026-05-07 (CISO) and 2026-06-01 (NYISO), so a true 
 test is available by re-extracting from MotherDuck and scoring the weeks since. What the two
 checks above establish is narrower but sufficient for the decision at hand: the specification's
 free choices are not where the gain comes from.
+
+
+---
+
+## Results with the RL agents (2026-09-25)
+
+Twenty runs — two markets, two training sources, five seeds — at 2,000,000 timesteps each under
+`--forecast shape`, then scored with `--shape-days 28`. All twenty manifests record
+`status: finished`, `git_dirty: false` at commit `a6ae81c`. The DP and baseline rows are
+bit-identical to those written before the agents were added, no method beats perfect foresight,
+and there are no mask violations.
+
+| method | CISO | NYISO |
+|---|---|---|
+| perfect foresight | $18,314 (100%) | $16,674 (100%) |
+| forecast_optimal | $16,428 (89.7%) | $13,266 (79.6%) |
+| DP | $15,787 (86.2%) | $12,375 (74.2%) |
+| schedule | $15,029 (82.1%) | $11,762 (70.5%) |
+| RL, OU-trained | $14,889 (81.3%) | $10,830 (64.9%) |
+| RL, bootstrap-trained | $14,656 (80.0%) | $10,303 (61.8%) |
+| threshold | $5,240 (28.6%) | $3,424 (20.5%) |
+
+Against the DP, seeds averaged, same paired block bootstrap:
+
+| | CISO | NYISO |
+|---|---|---|
+| RL, OU-trained | −$898 [−1,561, −174], underperforms | −$1,545 [−1,998, −1,127], underperforms |
+| RL, bootstrap-trained | −$1,131 [−1,789, −412], underperforms | −$2,072 [−2,653, −1,534], underperforms |
+| bootstrap vs OU, head to head | −$233 [−361, −108] | −$527 [−771, −298] |
+
+### What it changes
+1. **Nothing reorders.** Every method gains $1,000-1,800 a week and the ranking is unchanged.
+   Model-free RL still loses to model-based control in all four comparisons, every interval
+   excluding zero. That result was not an artifact of a weak forecast.
+2. **The widened prior worked.** The agents gained +$1,417 and +$1,013 (CISO) and +$1,585 and
+   +$1,848 (NYISO) — in NYISO more than the DP gained — so they exploited the sharper forecast
+   rather than ignoring it. Had the old prior been kept, a fifth of CISO evaluation weeks would
+   have fallen outside the training distribution.
+3. **Prediction 1 extends to the agents.** Neither clears the residual-blind ceiling; they sit
+   8 to 15 points of value capture below it. Every method in this project that models the price
+   residual still scores below a policy that ignores it.
+4. **One verdict flips.** Bootstrap training is now worse than OU training in *both* markets. It
+   was inconclusive on CISO under the old forecast (+$171, CI [−51, +442]); it is now −$233, CI
+   [−361, −108]. "Training on real price paths did not help" strengthens from mixed to
+   consistently negative.
+
+The equivalence margins registered in docs/experiments/scoring_rule.md are ±$291 and ±$218, set
+at 2% of the DP mean under the old forecast. Under this forecast 2% would be $316 and $247;
+`check_margin` prints the discrepancy and the registered values continue to apply, since
+re-deriving a margin from the results it will judge would defeat its purpose.

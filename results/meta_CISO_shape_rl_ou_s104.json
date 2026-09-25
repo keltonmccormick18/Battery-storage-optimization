@@ -1,0 +1,12 @@
+{
+  "market": "CISO",
+  "shape_days": 28,
+  "method": "rl_ou_s104",
+  "weeks": 114,
+  "model_path": "/content/drive/MyDrive/battery_rl/models/rl_ou_CISO_s104_shape_final.zip",
+  "model_sha256": "1a6afd4553401d67af83a9f4277f6786031b40e086bdf5d7e05e952a853a288f",
+  "git_commit": "a6ae81cee82d0aa9400c83383ef4f43de96e4a83",
+  "git_dirty": false,
+  "observe_q": false,
+  "evaluated_at": "2026-09-25T15:28:49+00:00"
+}
